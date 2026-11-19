@@ -101,8 +101,6 @@ export function FileBar() {
         {tab.path}
       </span>
 
-      <span style={{ flex: 1 }} />
-
       <CopyButton text={raw} label="复制源码" className={`icon-btn labeled${raw ? "" : ""}`} />
       {tab.kind === "markdown" && mode === "render" && (
         <button

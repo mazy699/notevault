@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { FileNode, VaultInfo } from "../../shared/types";
 import { api } from "../api/client";
+import { useTabs } from "./tabs";
 
 interface VaultState {
   info: VaultInfo | null;
@@ -45,6 +46,8 @@ export const useVault = create<VaultState>((set, get) => ({
     try {
       const info = await api.vaultSet(path);
       const history = await api.vaultList();
+      // 切换笔记库：清空旧库的标签与内容缓存，避免展示同名旧文件
+      useTabs.setState({ tabs: [], active: null, content: {}, loading: {}, recents: [] });
       set({ info, vaultHistory: history, expanded: {} });
       await get().refreshTree();
     } catch (e) {
@@ -53,10 +56,15 @@ export const useVault = create<VaultState>((set, get) => ({
   },
 
   pickVault: async () => {
-    const info = await api.vaultPick();
-    if (info) {
-      set({ info });
-      await get().refreshTree();
+    try {
+      const info = await api.vaultPick();
+      if (info) {
+        useTabs.setState({ tabs: [], active: null, content: {}, loading: {}, recents: [] });
+        set({ info });
+        await get().refreshTree();
+      }
+    } catch (e) {
+      set({ treeError: e instanceof Error ? e.message : String(e) });
     }
   },
 

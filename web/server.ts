@@ -41,11 +41,9 @@ const argVal = (name: string): string | undefined => {
 const PORT = Number(process.env.NOTEVAULT_WEB_PORT || argVal("port") || 8321);
 const SHOULD_OPEN = args.includes("--open");
 const DIST = path.resolve(__dirname, "../../dist");
-// 设置文件位置：Windows 用 %APPDATA%，其他平台回退 ~/.config
+// 设置文件位置：Windows 用 %APPDATA%，其他平台回退 ~/.local/share（与桌面宿主一致）
 const SETTINGS_FILE = (() => {
-  const base =
-    process.env.APPDATA ||
-    (process.platform === "darwin" ? path.join(os.homedir(), ".config") : path.join(os.homedir(), ".local/share"));
+  const base = process.env.APPDATA || path.join(os.homedir(), ".local/share");
   return path.join(base, "notevault", "settings.json");
 })();
 
@@ -240,7 +238,10 @@ function searchVault(query: string, caseSensitive: boolean): SearchResult {
           matchCount += matches.length;
           hits.push({ path: childRel, name: e.name, kind, matches });
         }
-        if (matchCount >= 600) truncated = true;
+        if (matchCount >= 600) {
+          truncated = true;
+          break;
+        }
       }
     }
   };
@@ -314,6 +315,16 @@ const routes: Record<string, (payload: Record<string, unknown>) => unknown> = {
     if (!info) throw new Error(`目录不存在或不可访问：${abs}`);
     vaultPath = abs;
     settings["last_vault"] = abs;
+    // 维护最近使用历史（与桌面宿主同一文件、同一逻辑）
+    const hist: string[] = (() => {
+      try {
+        return JSON.parse(settings["vault_history"] || "[]") as string[];
+      } catch {
+        return [];
+      }
+    })().filter((x) => x !== abs);
+    hist.unshift(abs);
+    settings["vault_history"] = JSON.stringify(hist.slice(0, 10));
     saveSettings(settings);
     return info;
   },
@@ -327,9 +338,11 @@ const routes: Record<string, (payload: Record<string, unknown>) => unknown> = {
     const root = requireVault();
     const out: Record<string, { mtimeMs: number; size: number }> = {};
     for (const rel of (Array.isArray(p.paths) ? p.paths : []).map(String)) {
+      const norm = normalizeRelPath(rel);
+      if (norm === null || !norm) continue;
       try {
-        const st = fs.statSync(path.resolve(root, normalizeRelPath(rel) ?? ""));
-        out[rel] = { mtimeMs: st.mtimeMs, size: st.size };
+        const st = fs.statSync(path.resolve(root, norm));
+        if (st.isFile()) out[rel] = { mtimeMs: st.mtimeMs, size: st.size };
       } catch {
         /* 文件可能已删除 */
       }
@@ -403,13 +416,37 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url || "/", "http://127.0.0.1");
 
+    // 防 DNS rebinding：Host 必须是本机地址
+    const host = String(req.headers.host || "");
+    if (!/^127\.0\.0\.1(:\d+)?$/.test(host) && !/^localhost(:\d+)?$/.test(host)) {
+      return json(res, 403, { error: "拒绝访问：非法 Host" });
+    }
+
     // API：POST /api/<cmd>
     if (req.method === "POST" && url.pathname.startsWith("/api/")) {
+      // 防 CSRF：仅接受应用自身页面的同源请求
+      const origin = String(req.headers.origin || "");
+      const fetchSite = String(req.headers["sec-fetch-site"] || "same-origin");
+      const contentType = String(req.headers["content-type"] || "");
+      if (origin && !origin.startsWith(`http://127.0.0.1:${PORT}`) && !origin.startsWith(`http://localhost:${PORT}`)) {
+        return json(res, 403, { error: "拒绝访问：跨站请求" });
+      }
+      if (fetchSite === "cross-site") {
+        return json(res, 403, { error: "拒绝访问：跨站请求" });
+      }
+      if (!contentType.includes("application/json")) {
+        return json(res, 415, { error: "Content-Type 必须为 application/json" });
+      }
       const channel = url.pathname.slice(5);
       const handler = routes[channel];
       if (!handler) return json(res, 404, { error: `未知命令: ${channel}` });
       let body = "";
-      for await (const chunk of req) body += chunk;
+      let size = 0;
+      for await (const chunk of req) {
+        size += chunk.length;
+        if (size > 1024 * 1024) return json(res, 413, { error: "请求体过大" });
+        body += chunk;
+      }
       let payload: Record<string, unknown> = {};
       if (body) {
         try {
@@ -436,12 +473,14 @@ const server = http.createServer(async (req, res) => {
       return serveFile(res, abs);
     }
 
-    // 库外绝对路径文件：GET /raw?path=<abs>（md 中偶发的绝对路径引用）
+    // 库外绝对路径文件：GET /raw?path=<abs>（md 中偶发的绝对路径图片引用）
+    // 安全策略：仅允许图片类文件，禁止 HTML/JS 等可执行内容
     if (req.method === "GET" && url.pathname === "/raw") {
       const p = decodeURIComponent(url.searchParams.get("path") || "");
       if (!p) return json(res, 400, { error: "缺少 path 参数" });
       const abs = path.resolve(p);
       if (!fs.existsSync(abs) || fs.statSync(abs).isDirectory()) return json(res, 404, { error: "文件不存在" });
+      if (kindOf(path.basename(abs)) !== "image") return json(res, 403, { error: "仅支持库外图片文件的绝对路径访问" });
       return serveFile(res, abs);
     }
 
@@ -449,7 +488,7 @@ const server = http.createServer(async (req, res) => {
     let urlPath = decodeURIComponent(url.pathname);
     if (urlPath === "/") urlPath = "/index.html";
     let filePath = path.join(DIST, urlPath);
-    if (!filePath.startsWith(DIST)) {
+    if (filePath !== DIST && !filePath.startsWith(DIST + path.sep)) {
       res.writeHead(403);
       return res.end();
     }

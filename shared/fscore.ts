@@ -76,7 +76,7 @@ export function naturalCompare(a: string, b: string, aIsDir = false, bIsDir = fa
   return a.localeCompare(b, "zh-Hans-CN", { numeric: true, sensitivity: "base" });
 }
 
-/** 规范化相对路径：反斜杠→斜杠、剥 ./、拒绝 .. 逃逸；返回 null 表示非法 */
+/** 规范化相对路径：反斜杠→斜杠、剥 ./、拒绝 .. 逃逸与控制字符；返回 null 表示非法 */
 export function normalizeRelPath(input: string): string | null {
   const p = String(input).replace(/\\/g, "/").replace(/^\/+/, "").trim();
   if (!p) return "";
@@ -84,7 +84,7 @@ export function normalizeRelPath(input: string): string | null {
   for (const seg of p.split("/")) {
     if (!seg || seg === ".") continue;
     if (seg === "..") return null;
-    if (/[<>:"|?*\u0000]/.test(seg)) return null;
+    if (/[<>:"|?*\u0000-\u001f]/.test(seg)) return null;
     parts.push(seg);
   }
   return parts.join("/");

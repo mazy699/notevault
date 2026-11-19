@@ -28,7 +28,13 @@ fn percent_decode(s: &str) -> String {
 }
 
 fn mime_of(path: &str) -> &'static str {
-    let ext = path.rsplit('.').next().unwrap_or("").to_lowercase();
+    // 只取文件名部分计算扩展名（目录名可能含点）
+    let filename = path.rsplit(['/', '\\']).next().unwrap_or(path);
+    let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
+    let has_ext = filename.contains('.');
+    if !has_ext {
+        return "application/octet-stream";
+    }
     match ext.as_str() {
         "html" | "htm" => "text/html; charset=utf-8",
         "js" | "mjs" => "text/javascript; charset=utf-8",
@@ -54,7 +60,6 @@ fn text_response(status: u16, body: &'static str) -> tauri::http::Response<Cow<'
     tauri::http::Response::builder()
         .status(status)
         .header("Content-Type", "text/plain; charset=utf-8")
-        .header("Access-Control-Allow-Origin", "*")
         .body(Cow::Borrowed(body.as_bytes()))
         .unwrap()
 }
@@ -64,7 +69,6 @@ fn file_response(abs: &PathBuf, mime: &str) -> tauri::http::Response<Cow<'static
         Ok(bytes) => tauri::http::Response::builder()
             .status(200)
             .header("Content-Type", mime)
-            .header("Access-Control-Allow-Origin", "*")
             .header("Cache-Control", "no-store")
             .body(Cow::Owned(bytes))
             .unwrap(),
@@ -88,11 +92,17 @@ pub fn handle(
         _ => return text_response(503, "尚未设置笔记库目录"),
     };
 
-    // ~abs/ 前缀：库外绝对路径
+    // ~abs/ 前缀：库外绝对路径。仅允许图片类（Markdown 绝对路径引用的典型场景），
+    // 禁止 HTML/JS 等可执行 MIME，收窄为最小面。
     if let Some(rest) = path.strip_prefix("~abs/") {
         let abs = PathBuf::from(rest);
         if !abs.is_absolute() || !abs.is_file() {
             return text_response(404, "文件不存在");
+        }
+        let filename = abs.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+        let kind = crate::fsops::kind_of(&filename);
+        if kind != crate::fsops::FileKind::Image {
+            return text_response(403, "仅支持库外图片文件的绝对路径访问");
         }
         let mime = mime_of(&rest);
         return file_response(&abs, mime);

@@ -147,12 +147,9 @@ pub fn decode_text(bytes: &[u8]) -> (String, &'static str) {
     match std::str::from_utf8(clean) {
         Ok(s) => (s.to_string(), "utf-8"),
         Err(_) => {
-            let (text, _, had_errors) = encoding_rs::GBK.decode(clean);
-            if had_errors {
-                (String::from_utf8_lossy(clean).into_owned(), "utf-8")
-            } else {
-                (text.into_owned(), "gbk")
-            }
+            // GBK 解码（非严格）：失败字符替换为 U+FFFD，编码统一报告 gbk（与 Web 版一致）
+            let (text, _, _) = encoding_rs::GBK.decode(clean);
+            (text.into_owned(), "gbk")
         }
     }
 }
@@ -184,7 +181,13 @@ pub fn build_tree(root: &Path) -> Result<FileNode, String> {
         return Err(format!("目录不存在或不可访问：{}", root.display()));
     }
     let mut budget = MAX_TREE_ENTRIES;
-    let node = walk_dir(root, "", &root.file_name().unwrap_or_default().to_string_lossy(), &mut budget);
+    // 盘符根（如 D:\）没有 file_name，回退为完整路径字符串（与 Web 版一致）
+    let root_name = root
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| root.display().to_string());
+    let node = walk_dir(root, "", &root_name, &mut budget);
     Ok(node)
 }
 
@@ -206,6 +209,9 @@ fn walk_dir(dir: &Path, rel: &str, name: &str, budget: &mut usize) -> FileNode {
     let mut files: Vec<(PathBuf, String)> = Vec::new();
     for e in entries.flatten() {
         let Ok(ft) = e.file_type() else { continue };
+        if ft.is_symlink() {
+            continue; // 统一策略：跳过符号链接/junction（与 Web 版一致，防止逃逸库根）
+        }
         let fname = e.file_name().to_string_lossy().into_owned();
         if ft.is_dir() {
             if !is_ignored_dir(&fname) {
@@ -275,6 +281,7 @@ pub fn read_file_content(root: &Path, rel: &str) -> Result<FileContent, String> 
     if parts.is_empty() {
         return Err("非法路径".into());
     }
+    let norm = parts.join("/");
     let abs = resolve_in_vault(root, rel)?;
     let md = fs::metadata(&abs).map_err(|e| format!("读取失败：{}", e))?;
     if md.is_dir() {
@@ -286,7 +293,7 @@ pub fn read_file_content(root: &Path, rel: &str) -> Result<FileContent, String> 
     let mt = mtime_ms_from(&md);
     if !is_text_kind(kind) {
         return Ok(FileContent {
-            path: rel.to_string(),
+            path: norm.clone(),
             name,
             kind,
             size,
@@ -297,10 +304,15 @@ pub fn read_file_content(root: &Path, rel: &str) -> Result<FileContent, String> 
         });
     }
     let truncated = size > MAX_READ_BYTES;
-    let bytes = fs::read(&abs).map_err(|e| format!("读取失败：{}", e))?;
-    let bytes = &bytes[..bytes.len().min(MAX_READ_BYTES as usize)];
-    let (content, encoding) = decode_text(bytes);
-    Ok(FileContent { path: rel.to_string(), name, kind, size, mtime_ms: mt, content, truncated, encoding })
+    // 只读前 MAX_READ_BYTES 字节，避免超大文件整读进内存
+    let mut bytes: Vec<u8> = Vec::with_capacity(size.min(MAX_READ_BYTES) as usize);
+    {
+        use std::io::Read;
+        let f = fs::File::open(&abs).map_err(|e| format!("读取失败：{}", e))?;
+        f.take(MAX_READ_BYTES).read_to_end(&mut bytes).map_err(|e| format!("读取失败：{}", e))?;
+    }
+    let (content, encoding) = decode_text(&bytes);
+    Ok(FileContent { path: norm, name, kind, size, mtime_ms: mt, content, truncated, encoding })
 }
 
 // ---------------- HTML 剥离标签（供搜索） ----------------
@@ -335,7 +347,7 @@ pub fn strip_html_tags(html: &str) -> String {
             }
             let next = (k + 1).min(chars.len());
             if tag == "script" || tag == "style" || tag == "title" {
-                // 跳过整个元素内容直到闭合标签结束
+                // 跳过整个元素内容直到闭合标签结束；保留其中的换行数以维持行号对齐
                 let close = format!("</{}", tag);
                 let lower_rest: String = chars[next..].iter().collect::<String>().to_lowercase();
                 let found = lower_rest
@@ -345,6 +357,10 @@ pub fn strip_html_tags(html: &str) -> String {
                 let mut e = found;
                 while e < chars.len() && chars[e] != '>' {
                     e += 1;
+                }
+                let newlines = chars[next..e.min(chars.len())].iter().filter(|&&c| c == '\n').count();
+                for _ in 0..newlines {
+                    out.push('\n');
                 }
                 i = (e + 1).min(chars.len());
                 continue;
@@ -412,8 +428,10 @@ pub fn find_matches(content: &str, query: &str, limit: usize, case_sensitive: bo
     if q.is_empty() {
         return Vec::new();
     }
+    // 统一换行（与 Web 版 split(/\r\n|\r|\n/) 语义一致，CRLF 不产生空行偏移）
+    let normalized = content.replace("\r\n", "\n").replace('\r', "\n");
     let mut matches = Vec::new();
-    for (idx, line) in content.split(['\n', '\r']).enumerate() {
+    for (idx, line) in normalized.split('\n').enumerate() {
         if matches.len() >= limit {
             break;
         }
@@ -462,19 +480,22 @@ pub struct SnapEntry {
     pub size: u64,
 }
 
-pub fn snapshot(root: &Path) -> Result<Vec<(String, SnapEntry)>, String> {
+/// 返回 (条目, 是否截断)；与 Web 版一致：超过 8000 文件视为截断
+pub fn snapshot(root: &Path) -> Result<(Vec<(String, SnapEntry)>, bool), String> {
     if !root.is_dir() {
         return Err("尚未设置笔记库目录".into());
     }
     let mut out = Vec::new();
     let mut truncated = false;
     walk_snap(root, "", &mut out, &mut truncated);
-    Ok(out)
+    Ok((out, truncated))
 }
 
 fn walk_snap(dir: &Path, rel: &str, out: &mut Vec<(String, SnapEntry)>, truncated: &mut bool) {
-    if *truncated || out.len() > 8000 {
-        *truncated = true;
+    if *truncated || out.len() >= 8000 {
+        if out.len() >= 8000 {
+            *truncated = true;
+        }
         return;
     }
     let entries = match fs::read_dir(dir) {
@@ -482,11 +503,14 @@ fn walk_snap(dir: &Path, rel: &str, out: &mut Vec<(String, SnapEntry)>, truncate
         Err(_) => return,
     };
     for e in entries.flatten() {
-        if *truncated || out.len() > 8000 {
+        if *truncated || out.len() >= 8000 {
             *truncated = true;
             return;
         }
         let Ok(ft) = e.file_type() else { continue };
+        if ft.is_symlink() {
+            continue;
+        }
         let fname = e.file_name().to_string_lossy().into_owned();
         let child_rel = if rel.is_empty() { fname.clone() } else { format!("{}/{}", rel, fname) };
         if ft.is_dir() {

@@ -1,4 +1,6 @@
 import { useTabs } from "../../stores/tabs";
+import { useVault } from "../../stores/vault";
+import { api } from "../../api/client";
 import { MarkdownView, HtmlView, ImageView, TextView } from "./MarkdownView";
 import { SourceView } from "./SourceView";
 import { Outline } from "./Outline";
@@ -21,6 +23,19 @@ export function Viewer() {
   let body: React.ReactNode;
   if (tab.kind === "image") {
     body = <ImageView path={tab.path} />;
+  } else if (tab.kind === "other" && (!fc || fc.content === "")) {
+    const nativePath = `${useVault.getState().info?.path ?? ""}\\${tab.path.replace(/\//g, "\\")}`;
+    body = (
+      <div className="empty-state">
+        <div className="empty-card">
+          <h1 style={{ fontSize: 18 }}>暂不支持预览 .{tab.name.split(".").pop() || "bin"} 文件</h1>
+          <p>该文件类型没有内置预览，可在系统中用关联程序打开。</p>
+          <button className="btn-ghost" onClick={() => void api.openExternal(nativePath)}>
+            在系统中打开
+          </button>
+        </div>
+      </div>
+    );
   } else if (!fc) {
     body = (
       <div className="loading-hint" style={{ margin: "18px 44px" }}>

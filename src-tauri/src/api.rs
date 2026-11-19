@@ -23,6 +23,9 @@ fn count_files(root: &PathBuf) -> usize {
         let Ok(entries) = std::fs::read_dir(&dir) else { continue };
         for e in entries.flatten() {
             let Ok(ft) = e.file_type() else { continue };
+            if ft.is_symlink() {
+                continue;
+            }
             if ft.is_dir() {
                 let name = e.file_name().to_string_lossy().into_owned();
                 if !fsops::is_ignored_dir(&name) {
@@ -38,7 +41,14 @@ fn count_files(root: &PathBuf) -> usize {
 
 fn vault_info(state: &AppState, path: Option<&str>) -> Result<Value, String> {
     let abs: Option<PathBuf> = match path {
-        Some(p) if !p.is_empty() => Some(PathBuf::from(p)),
+        Some(p) if !p.is_empty() => {
+            // 相对路径按当前目录解析为绝对路径（与 Web 版 path.resolve 行为一致）
+            let mut pb = PathBuf::from(p);
+            if !pb.is_absolute() {
+                pb = std::env::current_dir().unwrap_or_default().join(pb);
+            }
+            Some(pb)
+        }
         _ => state.vault_path.lock().unwrap().clone(),
     };
     match abs {
@@ -165,12 +175,12 @@ pub fn dispatch(app: &tauri::AppHandle, cmd: &str, payload: &Value) -> Result<Va
 
         "fs_snapshot" => {
             let root = require_vault(&state)?;
-            let entries = fsops::snapshot(&root)?;
+            let (entries, truncated) = fsops::snapshot(&root)?;
             let mut map = serde_json::Map::new();
             for (path, e) in entries {
                 map.insert(path, json!({ "mtimeMs": e.mtime_ms, "size": e.size }));
             }
-            Ok(json!({ "entries": map, "truncated": false }))
+            Ok(json!({ "entries": map, "truncated": truncated }))
         }
 
         "fs_search" => {
@@ -185,8 +195,9 @@ pub fn dispatch(app: &tauri::AppHandle, cmd: &str, payload: &Value) -> Result<Va
             let mut files_scanned = 0usize;
             let mut match_count = 0usize;
             let mut truncated = false;
-            let mut stack = vec![root.clone()];
-            while let Some(dir) = stack.pop() {
+            // (绝对路径, 相对路径) —— 相对路径在遍历时累积，避免盘符大小写导致 strip_prefix 失败
+            let mut stack = vec![(root.clone(), String::new())];
+            while let Some((dir, rel)) = stack.pop() {
                 if truncated || files_scanned >= fsops::MAX_SEARCH_FILES || match_count >= fsops::MAX_TOTAL_MATCHES {
                     truncated = truncated || files_scanned >= fsops::MAX_SEARCH_FILES || match_count >= fsops::MAX_TOTAL_MATCHES;
                     break;
@@ -198,10 +209,14 @@ pub fn dispatch(app: &tauri::AppHandle, cmd: &str, payload: &Value) -> Result<Va
                         break;
                     }
                     let Ok(ft) = e.file_type() else { continue };
+                    if ft.is_symlink() {
+                        continue;
+                    }
                     let name = e.file_name().to_string_lossy().into_owned();
+                    let child_rel = if rel.is_empty() { name.clone() } else { format!("{}/{}", rel, name) };
                     if ft.is_dir() {
                         if !fsops::is_ignored_dir(&name) {
-                            stack.push(e.path());
+                            stack.push((e.path(), child_rel));
                         }
                     } else if ft.is_file() {
                         let kind = fsops::kind_of(&name);
@@ -222,12 +237,7 @@ pub fn dispatch(app: &tauri::AppHandle, cmd: &str, payload: &Value) -> Result<Va
                         let matches = fsops::find_matches(&content, &query, fsops::MAX_MATCHES_PER_FILE, case_sensitive);
                         if !matches.is_empty() {
                             match_count += matches.len();
-                            // 相对路径
-                            let rel = e.path()
-                                .strip_prefix(&root)
-                                .map(|rp| rp.to_string_lossy().replace('\\', "/"))
-                                .unwrap_or(name.clone());
-                            hits.push((rel, name, kind, matches));
+                            hits.push((child_rel, name, kind, matches));
                         }
                     }
                 }
@@ -308,8 +318,11 @@ fn open_external_default(path: &str) {
     let _ = std::process::Command::new("xdg-open").arg(path).spawn();
 }
 
-/// Tauri 命令入口：单一 api(cmd, payload) 与 Web 路由同构
+/// Tauri 命令入口：单一 api(cmd, payload) 与 Web 路由同构。
+/// async + spawn_blocking：重 IO（树/搜索/快照）不阻塞主线程。
 #[tauri::command]
-pub fn api(app: tauri::AppHandle, cmd: String, payload: Value) -> Result<Value, String> {
-    dispatch(&app, &cmd, &payload)
+pub async fn api(app: tauri::AppHandle, cmd: String, payload: Value) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || dispatch(&app, &cmd, &payload))
+        .await
+        .map_err(|e| format!("任务执行失败: {}", e))?
 }

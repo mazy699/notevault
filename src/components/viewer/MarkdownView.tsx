@@ -4,6 +4,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import rehypeRaw from "rehype-raw";
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import rehypeSlug from "rehype-slug";
 import rehypeHighlight from "rehype-highlight";
 import { Code2 } from "lucide-react";
@@ -13,9 +14,17 @@ import { useVault } from "../../stores/vault";
 import { MermaidBlock } from "./MermaidBlock";
 import { copyText, CopyButton } from "./FileBar";
 
-/** 是否为绝对路径（Windows 盘符 / file:// / 以 / 开头） */
+/** 是否为文件系统绝对路径（Windows 盘符 / file://）。注意：以 / 开头的引用优先按库根相对解析。 */
 export function absPathLike(src: string): boolean {
-  return /^[a-zA-Z]:[\\/]/.test(src) || /^file:\/{2,}/i.test(src) || src.startsWith("/");
+  return /^[a-zA-Z]:[\\/]/.test(src) || /^file:\/{2,}/i.test(src);
+}
+
+/** 库根相对路径（以 / 开头的写法）→ 若库内存在该文件则返回库内 URL，否则返回 null */
+function resolveRootRelative(src: string): string | null {
+  if (!src.startsWith("/")) return null;
+  const rel = src.slice(1);
+  const meta = findInTree(rel);
+  return meta ? fileUrl(rel) : null;
 }
 
 /** 还原 react-markdown 预编码的 URL（encodeURI 形式）后再做路径解析，避免双重编码 */
@@ -104,19 +113,48 @@ function langOf(node: any): string {
   return "";
 }
 
+/**
+ * 消毒 schema：在默认（禁 script/事件处理器/javascript: URL）基础上，
+ * 放行 AI 文档常用表现元素与 Mermaid/KaTeX/代码高亮所需的 class。
+ */
+const sanitizeSchema = {
+  ...defaultSchema,
+  tagNames: [
+    ...(defaultSchema.tagNames ?? []),
+    "details", "summary", "mark", "kbd", "u", "ins", "sub", "sup",
+    "center", "figure", "figcaption", "font", "span", "div",
+    "math", "semantics", "mrow", "mi", "mn", "mo", "ms", "mtext",
+    "annotation", "mfrac", "msqrt", "mroot", "msub", "msup", "msubsup",
+    "munder", "mover", "munderover", "mtable", "mtr", "mtd", "mspace", "mstyle",
+  ],
+  attributes: {
+    ...defaultSchema.attributes,
+    "*": [...(defaultSchema.attributes?.["*"] ?? []), "className", "style", "id", "align", "width", "height"],
+    input: [...(defaultSchema.attributes?.input ?? []), "type", "checked", "disabled"],
+    math: ["xmlns", "display"],
+    annotation: ["encoding"],
+  },
+};
+
 interface MarkdownViewProps {
   content: string;
   filePath: string;
   dark: boolean;
 }
 
-/** Markdown 完整渲染管线（GFM / 数学公式 / 内嵌 HTML / 代码高亮 / Mermaid / 链接路由） */
+/** Markdown 完整渲染管线（GFM / 数学公式 / 消毒后的内嵌 HTML / 代码高亮 / Mermaid / 链接路由） */
 export const MarkdownView = memo(function MarkdownView({ content, filePath, dark }: MarkdownViewProps) {
   return (
     <div className="markdown-body">
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeRaw, rehypeKatex, rehypeSlug, [rehypeHighlight, { ignoreMissing: true }]]}
+        rehypePlugins={[
+          rehypeRaw,
+          [rehypeSanitize, sanitizeSchema],
+          rehypeKatex,
+          rehypeSlug,
+          [rehypeHighlight, { ignoreMissing: true }],
+        ]}
         components={{
           img: ({ src, alt, ...rest }) => {
             if (!src) return null;
@@ -126,6 +164,8 @@ export const MarkdownView = memo(function MarkdownView({ content, filePath, dark
               resolved = raw;
             } else if (absPathLike(raw)) {
               resolved = absFileUrl(raw.replace(/^file:\/{2,}/i, ""));
+            } else if (resolveRootRelative(raw)) {
+              resolved = resolveRootRelative(raw)!;
             } else {
               const rel = resolveRelativeRef(raw, filePath);
               resolved = rel ? fileUrl(rel) : raw;
@@ -153,7 +193,24 @@ export const MarkdownView = memo(function MarkdownView({ content, filePath, dark
           },
           a: ({ href, children, ...rest }) => {
             const raw = safeDecode(href ?? "");
-            const external = /^https?:\/\//i.test(raw) || /^mailto:/i.test(raw) || absPathLike(raw);
+            const rootRel = !absPathLike(raw) && resolveRootRelative(raw);
+            const external =
+              /^https?:\/\//i.test(raw) || /^mailto:/i.test(raw) || (absPathLike(raw) && !resolveRootRelative(raw));
+            if (rootRel) {
+              // /库根相对写法 且文件存在 → 应用内打开
+              return (
+                <a
+                  href={rootRel}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    openInternalLink(safeDecode(raw).slice(1));
+                  }}
+                  {...rest}
+                >
+                  {children}
+                </a>
+              );
+            }
             if (external) {
               const isHttp = /^https?:\/\//i.test(raw);
               const target = isHttp ? raw : absFileUrl(raw.replace(/^file:\/{2,}/i, ""));
@@ -237,7 +294,7 @@ export function HtmlView({ path }: { path: string }) {
       <iframe
         className="html-frame"
         src={fileUrl(path)}
-        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+        sandbox="allow-scripts allow-forms allow-popups allow-modals"
         title="HTML 预览"
       />
     </>

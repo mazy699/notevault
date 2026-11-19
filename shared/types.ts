@@ -74,9 +74,10 @@ export interface Snapshot {
   truncated: boolean;
 }
 
-/** 文件分类规则：由扩展名决定 kind */
+/** 文件分类规则：由扩展名决定 kind（无扩展名 → other，与 Rust 端语义一致） */
 export function kindOf(name: string): FileKind {
-  const ext = name.slice(name.lastIndexOf(".") + 1).toLowerCase();
+  const i = name.lastIndexOf(".");
+  const ext = i === -1 ? "" : name.slice(i + 1).toLowerCase();
   if (["md", "markdown", "mdx"].includes(ext)) return "markdown";
   if (["html", "htm"].includes(ext)) return "html";
   if (["txt", "log", "json", "yaml", "yml", "toml", "csv", "ini", "cfg"].includes(ext)) return "text";

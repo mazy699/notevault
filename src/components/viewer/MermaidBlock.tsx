@@ -22,7 +22,7 @@ export function MermaidBlock({ code, dark }: { code: string; dark: boolean }) {
         mermaid.initialize({
           startOnLoad: false,
           theme: dark ? "dark" : "neutral",
-          securityLevel: "loose",
+          securityLevel: "strict",
           fontFamily: '"Segoe UI", "Microsoft YaHei", system-ui, sans-serif',
           flowchart: { htmlLabels: true, useMaxWidth: true },
           sequence: { useMaxWidth: true },
@@ -31,19 +31,17 @@ export function MermaidBlock({ code, dark }: { code: string; dark: boolean }) {
         });
         const id = `nv-mmd-${++mermaidSeq}`;
         const { svg } = await mermaid.render(id, code);
+        // 无论组件是否已卸载，都清理 mermaid 残留在 body 的临时元素
+        document.getElementById(`d${id}`)?.remove();
         if (!cancelled) {
           setSvg(svg);
           setDone(true);
         }
-        // 清理 mermaid 残留在 body 的临时元素
-        document.getElementById(`d${id}`)?.remove();
       } catch (e) {
         if (!cancelled) {
           setSvg(null);
           setError(e instanceof Error ? e.message : String(e));
         }
-        // 失败后残留元素清理（mermaid.render 失败时可能留下 id 容器）
-        document.querySelectorAll(`[data-mermaid-temp]`).forEach((el) => el.remove());
       }
     })();
     return () => {

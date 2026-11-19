@@ -63,7 +63,9 @@ pub fn run() {
     // 4. 快照（3 个文件：a.md、sub/b.html、sub/图片.png）
     let snap = crate::fsops::snapshot(&dir);
     match &snap {
-        Ok(entries) => check!("snapshot_entries", entries.len() == 3),
+        Ok((entries, truncated)) => {
+            check!("snapshot_entries", entries.len() == 3 && !*truncated);
+        }
         Err(_) => check!("snapshot_ok", false),
     }
 

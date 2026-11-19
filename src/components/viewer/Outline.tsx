@@ -37,13 +37,23 @@ export function Outline() {
     };
   }, [version]);
 
-  // 内容/标签切换时重建：监听 .content 的 data-path 与子树变化
+  // 内容/标签切换时重建：监听 .content 的子树变化（rAF 去抖，避免渲染期间高频触发）
   useEffect(() => {
     const contentEl = document.querySelector<HTMLElement>(".content");
     if (!contentEl) return;
-    const mo = new MutationObserver(() => setVersion((v) => v + 1));
+    let scheduled = 0;
+    const mo = new MutationObserver(() => {
+      if (scheduled) return;
+      scheduled = requestAnimationFrame(() => {
+        scheduled = 0;
+        setVersion((v) => v + 1);
+      });
+    });
     mo.observe(contentEl, { childList: true, subtree: true });
-    return () => mo.disconnect();
+    return () => {
+      mo.disconnect();
+      if (scheduled) cancelAnimationFrame(scheduled);
+    };
   }, []);
 
   // 滚动位置 → 当前标题

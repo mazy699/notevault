@@ -30,7 +30,15 @@ export default function App() {
     };
     const handler = () => void doRefresh();
     window.addEventListener("nv-refresh-requested", handler);
-    return () => window.removeEventListener("nv-refresh-requested", handler);
+    // 切换笔记库时重置快照基线，避免首轮误判"有变化"
+    const onVaultChanged = () => {
+      lastSnapshot.current = null;
+    };
+    window.addEventListener("nv-vault-changed", onVaultChanged);
+    return () => {
+      window.removeEventListener("nv-refresh-requested", handler);
+      window.removeEventListener("nv-vault-changed", onVaultChanged);
+    };
   }, []);
 
   // 自动刷新：轮询快照 diff（4s）

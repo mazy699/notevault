@@ -38,6 +38,7 @@ function VaultMenu() {
     try {
       await setVault(path);
       setVaultMenuOpen(false);
+      window.dispatchEvent(new CustomEvent("nv-vault-changed"));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -59,6 +60,7 @@ function VaultMenu() {
       <button className="item" onClick={() => void pickVault()}>
         <FolderPlus size={15} /> {isTauri() ? "浏览…（系统目录选择框）" : "浏览…（Web 版请直接输入路径）"}
       </button>
+
       {vaultHistory.length > 0 && (
         <>
           <div className="divider" />
@@ -89,12 +91,10 @@ function VaultMenu() {
 export function TopBar() {
   const { theme, toggleTheme, setVaultMenuOpen, setSidebarTab, setQuickOpen, autoRefresh, toggleAutoRefresh } = useUi();
   const info = useVault((s) => s.info);
-  const refreshTree = useVault((s) => s.refreshTree);
   const [refreshing, setRefreshing] = useState(false);
 
   const doRefresh = async () => {
     setRefreshing(true);
-    await refreshTree();
     window.dispatchEvent(new CustomEvent("nv-refresh-requested"));
     setRefreshing(false);
   };

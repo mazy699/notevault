@@ -9,13 +9,14 @@
 
 ## 两种使用方式（功能完全一致）
 
-### 方式一：桌面版（免安装单文件）
+### 方式一：桌面版（免安装）
 
 ```
-release/NoteVault_<版本>_portable.exe
+release/NoteVault_<版本>_portable.exe   ← 与同目录 WebView2Loader.dll 一起使用
 ```
 
 - 双击直接运行，无需安装；依赖系统自带的 WebView2（Windows 10/11 自带）；
+- **注意**：exe 需与 `WebView2Loader.dll` 保持同目录（`npm run pack:portable` 已自动放置）；
 - 无数字签名：若公司策略拦截无法运行，请使用方式二；
 - 所有渲染资源（mermaid / katex / highlight.js）已内嵌，**离线可用**。
 

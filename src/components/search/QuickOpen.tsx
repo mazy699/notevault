@@ -63,7 +63,7 @@ export function QuickOpen() {
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      setSelected((s) => Math.min(s + 1, items.length - 1));
+      setSelected((s) => Math.min(s + 1, Math.max(0, items.length - 1)));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setSelected((s) => Math.max(s - 1, 0));

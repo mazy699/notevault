@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>纯样式页面 · NoteVault 示例</title>
+<style>
+  :root { --brand: #6d5bd0; --ink: #2b2f36; --muted: #6b7280; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 48px 24px; font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    color: var(--ink); background: linear-gradient(160deg, #f6f5fb 0%, #eef1f8 100%);
+  }
+  .card {
+    max-width: 760px; margin: 0 auto; background: #fff; border-radius: 16px;
+    box-shadow: 0 6px 24px rgba(50,50,93,.08); padding: 40px 48px;
+  }
+  h1 { margin: 0 0 6px; font-size: 26px; }
+  .subtitle { color: var(--muted); margin-bottom: 28px; }
+  .badge {
+    display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px;
+    background: color-mix(in srgb, var(--brand) 12%, white); color: var(--brand);
+    border: 1px solid color-mix(in srgb, var(--brand) 30%, white);
+  }
+  table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px; }
+  th, td { border: 1px solid #e5e7eb; padding: 10px 12px; text-align: left; }
+  th { background: #f9fafb; }
+  blockquote {
+    margin: 20px 0; padding: 12px 18px; border-left: 4px solid var(--brand);
+    background: #faf9ff; border-radius: 0 8px 8px 0; color: #4b5563;
+  }
+  code { background: #f3f4f6; padding: 2px 6px; border-radius: 6px; font-size: 13px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 24px; }
+  .stat { background: #f8f8fd; border: 1px solid #ecebf5; border-radius: 12px; padding: 16px; text-align: center; }
+  .stat b { display: block; font-size: 22px; color: var(--brand); }
+  .stat span { font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+  <div class="card">
+    <span class="badge">HTML 样例</span>
+    <h1>纯样式页面</h1>
+    <p class="subtitle">验证 NoteVault 的 iframe 渲染：CSS 完整生效、中文排版正常。</p>
+
+    <blockquote>
+      本文件由 AI 工具风格的静态 HTML 组成：<b>无任何脚本</b>，仅用于验证基础样式呈现（圆角卡片、渐变背景、表格、徽章）。
+    </blockquote>
+
+    <table>
+      <thead><tr><th>验证点</th><th>预期</th></tr></thead>
+      <tbody>
+        <tr><td>页面背景</td><td>淡紫渐变</td></tr>
+        <tr><td>卡片</td><td>白底、圆角 16px、柔和阴影</td></tr>
+        <tr><td>徽章</td><td>品牌色浅底胶囊</td></tr>
+        <tr><td>表格</td><td>斑马纹边框完整</td></tr>
+      </tbody>
+    </table>
+
+    <div class="grid">
+      <div class="stat"><b>2</b><span>宿主模式</span></div>
+      <div class="stat"><b>0</b><span>Web 版依赖</span></div>
+      <div class="stat"><b>100%</b><span>离线可用</span></div>
+    </div>
+
+    <p style="margin-top:28px;color:#6b7280;font-size:13px">
+      交互式示例请看 <code>HTML展示/交互式图表报告.html</code>（含内联 JavaScript 与 Canvas 图表）。
+    </p>
+  </div>
+</body>
+</html>

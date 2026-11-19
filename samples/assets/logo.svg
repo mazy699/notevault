@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="160" viewBox="0 0 320 160">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8b7bff"/>
+      <stop offset="1" stop-color="#5a46c8"/>
+    </linearGradient>
+  </defs>
+  <rect width="320" height="160" rx="20" fill="#f7f8fa"/>
+  <rect x="20" y="30" width="120" height="100" rx="14" fill="url(#g)"/>
+  <!-- note icon -->
+  <rect x="45" y="52" width="70" height="56" rx="6" fill="#ffffff" opacity="0.92"/>
+  <rect x="52" y="62" width="40" height="5" rx="2.5" fill="#8b7bff"/>
+  <rect x="52" y="74" width="56" height="5" rx="2.5" fill="#c9c2f2"/>
+  <rect x="52" y="86" width="48" height="5" rx="2.5" fill="#c9c2f2"/>
+  <rect x="52" y="98" width="34" height="5" rx="2.5" fill="#e4e1f7"/>
+  <!-- text -->
+  <text x="160" y="78" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="30" font-weight="700" fill="#2b2f36">NoteVault</text>
+  <text x="160" y="104" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="15" fill="#6b7280">AI 文档 · 笔记查看器</text>
+  <text x="160" y="124" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12" fill="#9aa0a8">Markdown / Mermaid / HTML</text>
+</svg>

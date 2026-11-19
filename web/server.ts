@@ -194,7 +194,7 @@ function readFileContent(rel: string): FileContent {
 }
 
 // ---------------- 全文搜索 ----------------
-function searchVault(query: string): SearchResult {
+function searchVault(query: string, caseSensitive: boolean): SearchResult {
   const root = requireVault();
   const started = Date.now();
   const q = query.trim();
@@ -235,7 +235,7 @@ function searchVault(query: string): SearchResult {
         let { content } = decodeText(buf);
         if (!content) continue;
         if (kind === "html") content = stripHtmlTags(content);
-        const matches = findMatches(content, q, MAX_MATCHES_PER_FILE);
+        const matches = findMatches(content, q, MAX_MATCHES_PER_FILE, caseSensitive);
         if (matches.length > 0) {
           matchCount += matches.length;
           hits.push({ path: childRel, name: e.name, kind, matches });
@@ -337,7 +337,7 @@ const routes: Record<string, (payload: Record<string, unknown>) => unknown> = {
     return out;
   },
   fs_snapshot: () => snapshot(),
-  fs_search: (p) => searchVault(String(p.query ?? "")),
+  fs_search: (p) => searchVault(String(p.query ?? ""), p.caseSensitive === true),
   settings_get: (p) => settings[String(p.key ?? "")] ?? null,
   settings_set: (p) => {
     settings[String(p.key ?? "")] = String(p.value ?? "");

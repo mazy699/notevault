@@ -83,6 +83,13 @@ describe("findMatches", () => {
     expect(findMatches(many, "keyword").length).toBe(8);
   });
 
+  it("大小写敏感模式", () => {
+    const text = "KEYWORD 大写\nkeyword 小写";
+    expect(findMatches(text, "keyword", 8, true).length).toBe(1);
+    expect(findMatches(text, "keyword", 8, true)[0].line).toBe(2);
+    expect(findMatches(text, "keyword", 8, false).length).toBe(2);
+  });
+
   it("空查询返回空", () => {
     expect(findMatches(text, "  ")).toEqual([]);
   });

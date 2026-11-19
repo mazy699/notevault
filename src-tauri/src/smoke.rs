@@ -55,8 +55,10 @@ pub fn run() {
     // 3. 搜索
     let (html_plain) = fsops::strip_html_tags("<p>hello <b>world</b><script>hidden()</script></p>");
     check!("strip_html", html_plain.contains("hello") && html_plain.contains("world") && !html_plain.contains("hidden"));
-    let matches = fsops::find_matches(md, "关键词", 8);
+    let matches = fsops::find_matches(md, "关键词", 8, false);
     check!("search_match", matches.len() == 1 && matches[0].line == 3);
+    let matches_cs = fsops::find_matches("KEYWORD 大写\nkeyword 小写", "keyword", 8, true);
+    check!("search_case_sensitive", matches_cs.len() == 1 && matches_cs[0].line == 2);
 
     // 4. 快照
     let snap = fsops::snapshot(&dir);

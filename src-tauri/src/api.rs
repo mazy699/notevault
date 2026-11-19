@@ -180,6 +180,7 @@ pub fn dispatch(app: &tauri::AppHandle, cmd: &str, payload: &Value) -> Result<Va
         "fs_search" => {
             let root = require_vault(&state)?;
             let query = p.get("query").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+            let case_sensitive = p.get("caseSensitive").and_then(|v| v.as_bool()).unwrap_or(false);
             if query.is_empty() {
                 return Ok(json!({ "hits": [], "fileCount": 0, "matchCount": 0, "truncated": false, "elapsedMs": 0 }));
             }
@@ -222,7 +223,7 @@ pub fn dispatch(app: &tauri::AppHandle, cmd: &str, payload: &Value) -> Result<Va
                             continue;
                         }
                         let content = if kind == fsops::FileKind::Html { fsops::strip_html_tags(&content) } else { content };
-                        let matches = fsops::find_matches(&content, &query, fsops::MAX_MATCHES_PER_FILE);
+                        let matches = fsops::find_matches(&content, &query, fsops::MAX_MATCHES_PER_FILE, case_sensitive);
                         if !matches.is_empty() {
                             match_count += matches.len();
                             // 相对路径

@@ -1196,6 +1196,214 @@ html.dark .html-frame {
   align-items: center;
   gap: 8px;
 }
+.locate-flash {
+  animation: locateFlash 1.6s ease-out;
+}
+@keyframes locateFlash {
+  0%,
+  40% {
+    background: var(--accent-soft);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+    border-radius: 4px;
+  }
+  100% {
+    background: transparent;
+    box-shadow: none;
+  }
+}
+
+/* 搜索页 */
+.search-page {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.search-options {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  user-select: none;
+  min-width: 0;
+}
+.search-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  flex: none;
+}
+.search-options .search-scope {
+  color: var(--text-faint);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+.search-options input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+.search-stats {
+  padding: 0 12px 8px;
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+.search-results {
+  flex: 1;
+  overflow: auto;
+  padding: 0 4px 12px;
+  min-height: 0;
+}
+.search-file {
+  margin-top: 6px;
+}
+.search-file .sf-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  cursor: pointer;
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: var(--text);
+  min-width: 0;
+}
+.search-file .sf-head:hover {
+  background: var(--bg-hover);
+}
+.search-file .sf-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: none;
+  max-width: 60%;
+}
+.search-file .sf-path {
+  color: var(--text-faint);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+.search-file .sf-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-faint);
+  flex: none;
+}
+.search-hit {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  padding: 4px 8px 4px 26px;
+  border-radius: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.search-hit:hover {
+  background: var(--bg-hover);
+}
+.search-hit mark {
+  background: var(--md-mark);
+  color: var(--text);
+  border-radius: 3px;
+  padding: 0 1px;
+}
+
+/* Quick Open 浮层 */
+.qo-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: color-mix(in srgb, var(--bg) 40%, transparent);
+  backdrop-filter: blur(2px);
+  display: flex;
+  justify-content: center;
+  padding-top: 90px;
+}
+.qo-panel {
+  width: 560px;
+  max-height: 480px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: pop 0.14s ease-out;
+}
+.qo-panel input {
+  height: 44px;
+  border: none;
+  outline: none;
+  border-bottom: 1px solid var(--border);
+  padding: 0 16px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--text);
+  background: transparent;
+  box-sizing: border-box;
+}
+.qo-list {
+  flex: 1;
+  overflow: auto;
+  padding: 6px;
+}
+.qo-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+  text-align: left;
+}
+.qo-item.selected {
+  background: var(--accent-soft);
+}
+.qo-item .qo-path {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 260px;
+}
+.qo-item mark {
+  background: transparent;
+  color: var(--accent-text);
+  font-weight: 700;
+}
+.qo-empty {
+  padding: 22px;
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 12.5px;
+}
 .spinner {
   width: 13px;
   height: 13px;

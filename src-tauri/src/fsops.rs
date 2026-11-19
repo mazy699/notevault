@@ -403,8 +403,12 @@ pub struct SearchMatch {
     pub text: String,
 }
 
-pub fn find_matches(content: &str, query: &str, limit: usize) -> Vec<SearchMatch> {
-    let q: Vec<char> = query.to_lowercase().chars().collect();
+pub fn find_matches(content: &str, query: &str, limit: usize, case_sensitive: bool) -> Vec<SearchMatch> {
+    let q: Vec<char> = if case_sensitive {
+        query.chars().collect()
+    } else {
+        query.to_lowercase().chars().collect()
+    };
     if q.is_empty() {
         return Vec::new();
     }
@@ -414,7 +418,12 @@ pub fn find_matches(content: &str, query: &str, limit: usize) -> Vec<SearchMatch
             break;
         }
         let chars: Vec<char> = line.chars().collect();
-        if let Some(hit) = find_ci(&chars, &q, 0) {
+        let hit = if case_sensitive {
+            find_cs(&chars, &q)
+        } else {
+            find_ci(&chars, &q)
+        };
+        if let Some(hit) = hit {
             // 片段裁剪：命中前后各 ~60 字符（与 web 版一致：每行取首个命中）
             let start = hit.saturating_sub(60);
             let end = (hit + q.len() + 60).min(chars.len());
@@ -429,6 +438,22 @@ pub fn find_matches(content: &str, query: &str, limit: usize) -> Vec<SearchMatch
         }
     }
     matches
+}
+
+/// 大小写敏感的精确查找
+fn find_cs(hay_chars: &[char], needle_chars: &[char]) -> Option<usize> {
+    if needle_chars.is_empty() || hay_chars.len() < needle_chars.len() {
+        return None;
+    }
+    'outer: for start in 0..=(hay_chars.len() - needle_chars.len()) {
+        for (k, nc) in needle_chars.iter().enumerate() {
+            if hay_chars[start + k] != *nc {
+                continue 'outer;
+            }
+        }
+        return Some(start);
+    }
+    None
 }
 
 // ---------------- 快照 ----------------

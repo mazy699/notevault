@@ -9,6 +9,7 @@ import {
   FolderPlus,
   Sparkles,
   Folder,
+  Radar,
 } from "lucide-react";
 import { isTauri } from "../../api/client";
 import { useUi } from "../../stores/ui";
@@ -86,7 +87,7 @@ function VaultMenu() {
 }
 
 export function TopBar() {
-  const { theme, toggleTheme, setVaultMenuOpen, setSidebarTab, setQuickOpen } = useUi();
+  const { theme, toggleTheme, setVaultMenuOpen, setSidebarTab, setQuickOpen, autoRefresh, toggleAutoRefresh } = useUi();
   const info = useVault((s) => s.info);
   const refreshTree = useVault((s) => s.refreshTree);
   const [refreshing, setRefreshing] = useState(false);
@@ -128,6 +129,13 @@ export function TopBar() {
       <button className="icon-btn labeled" title="快速打开 (Ctrl+P)" onClick={() => setQuickOpen(true)}>
         <Sparkles size={15} />
         快速打开
+      </button>
+      <button
+        className={`icon-btn${autoRefresh ? " active" : ""}`}
+        title={autoRefresh ? "自动刷新已开启（每 4 秒检测文件变化）" : "开启自动刷新（检测外部文件变化）"}
+        onClick={toggleAutoRefresh}
+      >
+        <Radar size={15} />
       </button>
       <button className="icon-btn" title="刷新目录与文件" onClick={() => void doRefresh()}>
         <RefreshCw size={15} className={refreshing ? "animate-spin" : ""} />

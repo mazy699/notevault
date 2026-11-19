@@ -1,12 +1,16 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FolderTree, Search, History, X, Files } from "lucide-react";
-import type { FileNode } from "../../../shared/types";
+import type { FileNode, SearchHit, SearchMatch, SearchResult } from "../../../shared/types";
 import type { SidebarTab } from "../../stores/ui";
 import { useUi } from "../../stores/ui";
 import { useVault } from "../../stores/vault";
 import { useTabs } from "../../stores/tabs";
+import { api, fileUrl } from "../../api/client";
 import { FileTree } from "../tree/FileTree";
 import { KindIcon } from "../common/KindIcon";
+import { splitByQuery } from "../../lib/format";
+import { locateTextInContent } from "../../lib/locate";
+import { findInTree } from "../viewer/MarkdownView";
 
 function FilesPage() {
   const [filter, setFilter] = useState("");
@@ -96,16 +100,123 @@ export function RecentsPage() {
   );
 }
 
-export function SearchPage() {
-  // 阶段 3 实现全文搜索；这里先渲染占位
+function SearchPage() {
+  const [query, setQuery] = useState("");
+  const [caseSensitive, setCaseSensitive] = useState(false);
+  const [result, setResult] = useState<SearchResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const seqRef = useRef(0);
+
+  const doSearch = async (q: string, cs: boolean) => {
+    const seq = ++seqRef.current;
+    if (!q.trim()) {
+      setResult(null);
+      setError(null);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const r = await api.fsSearch(q, cs);
+      if (seq === seqRef.current) setResult(r);
+    } catch (e) {
+      if (seq === seqRef.current) {
+        setResult(null);
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    } finally {
+      if (seq === seqRef.current) setLoading(false);
+    }
+  };
+
+  // 防抖：输入 400ms 后自动搜索
+  useEffect(() => {
+    const t = window.setTimeout(() => void doSearch(query, caseSensitive), 400);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, caseSensitive]);
+
+  const openHit = (hit: SearchHit, match?: SearchMatch) => {
+    const meta = findInTree(hit.path);
+    if (meta) {
+      useTabs.getState().openFile(meta);
+      useVault.getState().expandPath(hit.path);
+    } else {
+      window.open(fileUrl(hit.path), "_blank");
+    }
+    // 尽力定位首个命中位置
+    if (match) {
+      setTimeout(() => {
+        locateTextInContent(document.querySelector(".content"), match.text);
+      }, 700);
+    }
+  };
+
   return (
-    <div className="tree-scroll">
-      <div style={{ padding: "26px 18px", color: "var(--text-faint)", fontSize: 12.5, lineHeight: 1.8, textAlign: "center" }}>
-        <Search size={26} style={{ marginBottom: 8, opacity: 0.6 }} />
-        <br />
-        全文搜索即将启用
-        <br />
-        （当前阶段先提供目录树与文件查看）
+    <div className="search-page">
+      <div className="tree-filter">
+        <Search size={14} className="filter-icon" />
+        <input
+          type="text"
+          placeholder="在笔记库中搜索…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          spellCheck={false}
+        />
+        {query && (
+          <button className="icon-btn clear-btn" style={{ height: 24, minWidth: 24 }} onClick={() => setQuery("")}>
+            <X size={13} />
+          </button>
+        )}
+      </div>
+      <div className="search-options">
+        <label>
+          <input type="checkbox" checked={caseSensitive} onChange={(e) => setCaseSensitive(e.target.checked)} />
+          区分大小写
+        </label>
+        <span className="search-scope">md / html / txt</span>
+      </div>
+      {loading && (
+        <div className="loading-hint" style={{ padding: "4px 12px 8px" }}>
+          <span className="spinner" /> 正在搜索…
+        </div>
+      )}
+      {error && <div className="error-box" style={{ margin: "0 10px 8px" }}>{error}</div>}
+      {result && !loading && (
+        <div className="search-stats">
+          {result.fileCount} 个文件 · {result.matchCount} 处命中 · {result.elapsedMs}ms
+          {result.truncated ? "（结果已截断）" : ""}
+        </div>
+      )}
+      <div className="search-results">
+        {result?.hits.map((hit) => (
+          <div className="search-file" key={hit.path}>
+            <div className="sf-head" onClick={() => openHit(hit, hit.matches[0])} title={hit.path}>
+              <KindIcon kind={hit.kind} />
+              <span className="sf-name">{hit.name}</span>
+              <span className="sf-path">{hit.path}</span>
+              <span className="sf-count">{hit.matches.length}</span>
+            </div>
+            {hit.matches.map((m, i) => (
+              <button className="search-hit" key={i} onClick={() => openHit(hit, m)} title={`第 ${m.line} 行`}>
+                {splitByQuery(m.text, query.trim()).map((seg, j) =>
+                  seg.hit ? <mark key={j}>{seg.part}</mark> : <span key={j}>{seg.part}</span>
+                )}
+              </button>
+            ))}
+          </div>
+        ))}
+        {!result && !loading && !error && (
+          <div style={{ padding: "22px 16px", color: "var(--text-faint)", fontSize: 12.5, textAlign: "center" }}>
+            输入关键词开始全文搜索
+          </div>
+        )}
+        {result && result.hits.length === 0 && !loading && (
+          <div style={{ padding: "22px 16px", color: "var(--text-faint)", fontSize: 12.5, textAlign: "center" }}>
+            没有找到「{query.trim()}」
+          </div>
+        )}
       </div>
     </div>
   );

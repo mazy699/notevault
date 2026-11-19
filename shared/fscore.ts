@@ -112,14 +112,14 @@ export function stripHtmlTags(html: string): string {
     .replace(/&#39;/gi, "'");
 }
 
-/** 在单文件文本中查找所有命中（不区分大小写） */
-export function findMatches(content: string, query: string, limit = MAX_MATCHES_PER_FILE): SearchMatch[] {
-  const q = query.toLowerCase();
+/** 在单文件文本中查找所有命中（默认不区分大小写） */
+export function findMatches(content: string, query: string, limit = MAX_MATCHES_PER_FILE, caseSensitive = false): SearchMatch[] {
+  const q = caseSensitive ? query : query.toLowerCase();
   if (!q) return [];
   const lines = content.split(/\r\n|\r|\n/);
   const matches: SearchMatch[] = [];
   for (let i = 0; i < lines.length && matches.length < limit; i++) {
-    const lower = lines[i].toLowerCase();
+    const lower = caseSensitive ? lines[i] : lines[i].toLowerCase();
     let idx = lower.indexOf(q);
     if (idx === -1) continue;
     // 裁剪片段：命中词前后各留 ~60 字符

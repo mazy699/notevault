@@ -10,6 +10,7 @@ interface UiState {
   outlineOpen: boolean;
   vaultMenuOpen: boolean;
   quickOpen: boolean;
+  autoRefresh: boolean;
   toggleTheme: () => void;
   setSidebarWidth: (w: number) => void;
   toggleSidebar: () => void;
@@ -17,6 +18,7 @@ interface UiState {
   setOutlineOpen: (v: boolean) => void;
   setVaultMenuOpen: (v: boolean) => void;
   setQuickOpen: (v: boolean) => void;
+  toggleAutoRefresh: () => void;
 }
 
 function applyTheme(theme: "dark" | "light"): void {
@@ -36,6 +38,14 @@ function initialTheme(): "dark" | "light" {
   }
 }
 
+function initialAutoRefresh(): boolean {
+  try {
+    return localStorage.getItem("nv_auto_refresh") === "1";
+  } catch {
+    return false;
+  }
+}
+
 export const useUi = create<UiState>((set, get) => ({
   theme: initialTheme(),
   sidebarWidth: 280,
@@ -44,6 +54,7 @@ export const useUi = create<UiState>((set, get) => ({
   outlineOpen: true,
   vaultMenuOpen: false,
   quickOpen: false,
+  autoRefresh: initialAutoRefresh(),
   toggleTheme: () => {
     const next = get().theme === "dark" ? "light" : "dark";
     applyTheme(next);
@@ -56,4 +67,13 @@ export const useUi = create<UiState>((set, get) => ({
   setOutlineOpen: (v) => set({ outlineOpen: v }),
   setVaultMenuOpen: (v) => set({ vaultMenuOpen: v }),
   setQuickOpen: (v) => set({ quickOpen: v }),
+  toggleAutoRefresh: () => {
+    const next = !get().autoRefresh;
+    set({ autoRefresh: next });
+    try {
+      localStorage.setItem("nv_auto_refresh", next ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  },
 }));

@@ -7,7 +7,7 @@ import rehypeRaw from "rehype-raw";
 import rehypeSlug from "rehype-slug";
 import rehypeHighlight from "rehype-highlight";
 import { Code2 } from "lucide-react";
-import { fileUrl, absFileUrl } from "../../api/client";
+import { fileUrl, absFileUrl, isTauri, api } from "../../api/client";
 import { useTabs } from "../../stores/tabs";
 import { useVault } from "../../stores/vault";
 import { MermaidBlock } from "./MermaidBlock";
@@ -157,6 +157,22 @@ export const MarkdownView = memo(function MarkdownView({ content, filePath, dark
             if (external) {
               const isHttp = /^https?:\/\//i.test(raw);
               const target = isHttp ? raw : absFileUrl(raw.replace(/^file:\/{2,}/i, ""));
+              if (isTauri()) {
+                // 桌面版：交给系统默认程序打开（URL→浏览器，本地路径→系统关联程序）
+                const nativePath = raw.replace(/^file:\/{2,}/i, "").replace(/\//g, "\\");
+                return (
+                  <a
+                    href={target}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      void api.openExternal(isHttp ? raw : nativePath);
+                    }}
+                    {...rest}
+                  >
+                    {children}
+                  </a>
+                );
+              }
               return (
                 <a href={target} target="_blank" rel="noreferrer" {...rest}>
                   {children}

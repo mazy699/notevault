@@ -1,7 +1,6 @@
 /**
  * 宿主适配层：同一套 call(cmd, payload) 契约自动路由到 Tauri invoke 或 HTTP API。
  */
-import { convertFileSrc } from "@tauri-apps/api/core";
 import type { FileContent, FileNode, SearchResult, Snapshot, VaultInfo } from "../../shared/types";
 
 export function isTauri(): boolean {
@@ -44,18 +43,23 @@ export const api = {
   openExternal: (path: string) => call<null>("open_external", { path }),
 };
 
-/** 笔记库内相对路径 → 可访问 URL（图片 / iframe / 相对链接共用） */
+/**
+ * 笔记库内相对路径 → 可访问 URL（图片 / iframe / 相对链接共用）。
+ * 逐段编码保留路径结构，保证 HTML 内相对引用能按目录正确解析。
+ */
 export function fileUrl(relPath: string): string {
+  const encoded = relPath.split("/").map(encodeURIComponent).join("/");
   if (isTauri()) {
-    return convertFileSrc(relPath, "vault");
+    // Tauri 自定义 vault 协议（Windows WebView2 形态），由 vault_proto.rs 提供
+    return "http://vault.localhost/" + encoded;
   }
-  return "/vault/" + relPath.split("/").map(encodeURIComponent).join("/");
+  return "/vault/" + encoded;
 }
 
 /** 库外绝对路径文件 → 可访问 URL（Markdown 中偶发的绝对路径引用） */
 export function absFileUrl(absPath: string): string {
   if (isTauri()) {
-    return convertFileSrc("~abs/" + absPath, "vault");
+    return "http://vault.localhost/~abs/" + encodeURIComponent(absPath);
   }
   return "/raw?path=" + encodeURIComponent(absPath);
 }

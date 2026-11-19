@@ -14,7 +14,7 @@ pub struct AppState {
 }
 
 pub fn run() {
-    let mut settings = settings::Settings::load();
+    let settings = settings::Settings::load();
     let vault_path = settings.get("last_vault").map(std::path::PathBuf::from);
     let vault_history: Vec<String> = settings
         .get("vault_history")

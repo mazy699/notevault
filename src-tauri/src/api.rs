@@ -1,16 +1,9 @@
 //! API 命令分发：与 web/server.ts 的路由一一对应（同一契约 shared/types.ts）
 use crate::fsops;
-use crate::settings::Settings;
+use crate::AppState;
 use serde_json::{json, Value};
 use std::path::PathBuf;
-use std::sync::Mutex;
 use tauri::Manager;
-
-pub struct AppState {
-    pub settings: Mutex<Settings>,
-    pub vault_path: Mutex<Option<PathBuf>>,
-    pub vault_history: Mutex<Vec<String>>,
-}
 
 fn require_vault(state: &AppState) -> Result<PathBuf, String> {
     let guard = state.vault_path.lock().unwrap();
@@ -68,7 +61,10 @@ fn push_history(state: &AppState, path: &str) {
 }
 
 pub fn dispatch(app: &tauri::AppHandle, cmd: &str, payload: &Value) -> Result<Value, String> {
-    let state = app.state::<AppState>();
+    let Some(state) = app.try_state::<AppState>() else {
+        eprintln!("[api] AppState 尚未就绪: {}", cmd);
+        return Err("应用尚未就绪，请重试".into());
+    };
     let p = payload.clone();
     match cmd {
         "__ping" => Ok(json!({ "ok": true, "host": "tauri", "version": "0.1.0" })),
@@ -129,7 +125,7 @@ pub fn dispatch(app: &tauri::AppHandle, cmd: &str, payload: &Value) -> Result<Va
         }
 
         "vault_list" => {
-            let hist = state.vault_history.lock().unwrap();
+            let hist: Vec<String> = state.vault_history.lock().unwrap().clone();
             Ok(json!(hist))
         }
 

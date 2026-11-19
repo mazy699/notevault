@@ -17,7 +17,9 @@
     "web": "npm run build && node out-web/web/server.js --open",
     "web:serve": "node out-web/web/server.js --open",
     "tauri": "tauri",
-    "tauri:build": "npm run build && tauri build"
+    "tauri:build": "npm run build && cargo build --release --manifest-path src-tauri/Cargo.toml",
+    "tauri:smoke": "./src-tauri/target/release/notevault.exe --smoke",
+    "pack:portable": "node scripts/pack-portable.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",

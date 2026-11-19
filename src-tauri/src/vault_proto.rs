@@ -3,7 +3,7 @@
 //! URL 形态（Windows WebView2）：
 //!   http://vault.localhost/<库内相对路径，逐段编码>   —— 相对引用按目录自然解析
 //!   http://vault.localhost/~abs/<完整绝对路径编码>     —— 库外绝对路径引用
-use crate::api::AppState;
+use crate::AppState;
 use std::borrow::Cow;
 use std::path::PathBuf;
 use tauri::Manager;
@@ -76,7 +76,10 @@ pub fn handle(
     ctx: tauri::UriSchemeContext<'_, tauri::Wry>,
     request: tauri::http::Request<Vec<u8>>,
 ) -> tauri::http::Response<Cow<'static, [u8]>> {
-    let state = ctx.app_handle().state::<AppState>();
+    let Some(state) = ctx.app_handle().try_state::<AppState>() else {
+        eprintln!("[vault_proto] AppState 尚未就绪: {}", request.uri());
+        return text_response(503, "尚未就绪");
+    };
     let raw = request.uri().path().trim_start_matches('/').to_string();
     let path = percent_decode(&raw);
 

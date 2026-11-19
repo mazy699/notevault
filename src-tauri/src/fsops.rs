@@ -189,7 +189,7 @@ pub fn build_tree(root: &Path) -> Result<FileNode, String> {
 }
 
 fn walk_dir(dir: &Path, rel: &str, name: &str, budget: &mut usize) -> FileNode {
-    let node = FileNode {
+    let mut node = FileNode {
         path: rel.to_string(),
         name: name.to_string(),
         dir: true,
@@ -233,9 +233,9 @@ fn walk_dir(dir: &Path, rel: &str, name: &str, budget: &mut usize) -> FileNode {
             };
             children.push(FileNode {
                 path: child_rel,
+                kind: kind_of(&n),
                 name: n,
                 dir: false,
-                kind: kind_of(&n),
                 size,
                 mtime_ms: mt,
                 children: None,
@@ -421,7 +421,7 @@ pub fn find_matches(content: &str, query: &str, limit: usize, case_sensitive: bo
         let hit = if case_sensitive {
             find_cs(&chars, &q)
         } else {
-            find_ci(&chars, &q)
+            find_ci(&chars, &q, 0)
         };
         if let Some(hit) = hit {
             // 片段裁剪：命中前后各 ~60 字符（与 web 版一致：每行取首个命中）

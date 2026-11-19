@@ -75,6 +75,15 @@ export function FileTree({ filter }: { filter: string }) {
     return prune(tree, filter.trim().toLowerCase());
   }, [tree, filter]);
 
+  // 过滤后整棵树无命中 → 空状态提示
+  if (filter.trim() && !filtered) {
+    return (
+      <div style={{ padding: "18px 16px", color: "var(--text-faint)", fontSize: 12.5, textAlign: "center" }}>
+        没有匹配「{filter.trim()}」的文件
+      </div>
+    );
+  }
+
   if (!filtered) return null;
 
   const empty =

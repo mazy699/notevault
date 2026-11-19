@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Check, Copy, ExternalLink, FolderOpen, Eye, FileCode2 } from "lucide-react";
+import { Check, Copy, ExternalLink, FolderOpen, Eye, FileCode2, ListTree } from "lucide-react";
 import { api, isTauri } from "../../api/client";
 import { useTabs } from "../../stores/tabs";
 import { useVault } from "../../stores/vault";
+import { useUi } from "../../stores/ui";
 
 async function copyText(text: string): Promise<boolean> {
   try {
@@ -65,6 +66,7 @@ export function CopyButton({
 export function FileBar() {
   const { active, tabs, content, setViewMode } = useTabs();
   const info = useVault((s) => s.info);
+  const { outlineOpen, setOutlineOpen } = useUi();
   const tab = tabs.find((t) => t.path === active);
   if (!tab) return null;
   const raw = content[tab.path]?.content ?? "";
@@ -102,6 +104,15 @@ export function FileBar() {
       <span style={{ flex: 1 }} />
 
       <CopyButton text={raw} label="复制源码" className={`icon-btn labeled${raw ? "" : ""}`} />
+      {tab.kind === "markdown" && mode === "render" && (
+        <button
+          className={`icon-btn${outlineOpen ? " active" : ""}`}
+          title="大纲 (标题目录)"
+          onClick={() => setOutlineOpen(!outlineOpen)}
+        >
+          <ListTree size={14} />
+        </button>
+      )}
       {tab.kind === "html" && (
         <button
           className="icon-btn labeled"

@@ -1,16 +1,22 @@
 import { useTabs } from "../../stores/tabs";
 import { MarkdownView, HtmlView, ImageView, TextView } from "./MarkdownView";
+import { SourceView } from "./SourceView";
+import { Outline } from "./Outline";
 import { FileBar } from "./FileBar";
 import { Welcome } from "./Welcome";
+import { useUi } from "../../stores/ui";
 
 /** 当前激活文件的渲染路由 */
 export function Viewer() {
   const { active, tabs, content, loading } = useTabs();
+  const outlineOpen = useUi((s) => s.outlineOpen);
+  const dark = useUi((s) => s.theme === "dark");
   const tab = tabs.find((t) => t.path === active);
   if (!tab) return <Welcome />;
 
   const fc = content[tab.path];
   const isLoading = loading[tab.path];
+  const isMd = tab.kind === "markdown";
 
   let body: React.ReactNode;
   if (tab.kind === "image") {
@@ -28,19 +34,7 @@ export function Viewer() {
       </div>
     );
   } else if (tab.viewMode === "source") {
-    body = (
-      <div className="source-view">
-        <div className="code-block">
-          <div className="cb-head">
-            <span className="cb-lang">{tab.kind === "html" ? "html" : "markdown"}</span>
-            <span style={{ marginLeft: 10 }}>{fc.encoding}</span>
-          </div>
-          <pre>
-            <code>{fc.content}</code>
-          </pre>
-        </div>
-      </div>
-    );
+    body = <SourceView content={fc.content} kind={tab.kind} />;
   } else if (fc.truncated) {
     body = (
       <div className="error-box">
@@ -48,19 +42,24 @@ export function Viewer() {
         <pre style={{ marginTop: 10, whiteSpace: "pre-wrap", fontFamily: "var(--font-mono)", fontSize: 12 }}>{fc.content}</pre>
       </div>
     );
-  } else if (tab.kind === "markdown") {
-    body = <MarkdownView content={fc.content} filePath={tab.path} />;
+  } else if (isMd) {
+    body = <MarkdownView content={fc.content} filePath={tab.path} dark={dark} />;
   } else if (tab.kind === "html") {
     body = <HtmlView path={tab.path} />;
   } else {
     body = <TextView content={fc.content} />;
   }
 
+  const showOutline = isMd && tab.viewMode === "render" && outlineOpen;
+
   return (
     <div className="content-outer">
       <FileBar />
-      <div className="content" data-path={tab.path}>
-        {body}
+      <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
+        <div className="content" data-path={tab.path}>
+          {body}
+        </div>
+        {showOutline && <Outline />}
       </div>
     </div>
   );

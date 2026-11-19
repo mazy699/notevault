@@ -1,0 +1,25 @@
+[package]
+name = "notevault"
+version = "0.1.0"
+description = "NoteVault - AI 文档笔记查看器（Markdown / Mermaid / HTML）"
+edition = "2021"
+
+[lib]
+name = "notevault_lib"
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-clipboard-manager = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+encoding_rs = "0.8"
+
+[profile.release]
+strip = true
+lto = "thin"
+codegen-units = 4

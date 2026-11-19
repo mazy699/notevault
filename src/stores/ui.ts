@@ -41,7 +41,7 @@ export const useUi = create<UiState>((set, get) => ({
   sidebarWidth: 280,
   sidebarCollapsed: false,
   sidebarTab: "files",
-  outlineOpen: false,
+  outlineOpen: true,
   vaultMenuOpen: false,
   quickOpen: false,
   toggleTheme: () => {

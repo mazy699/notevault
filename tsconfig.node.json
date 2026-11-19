@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "node16",
+    "moduleResolution": "node16",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "outDir": "out-web",
+    "rootDir": ".",
+    "types": ["node"],
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["web", "shared"]
+}

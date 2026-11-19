@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NoteVault · 笔记查看器</title>
+    <script>
+      // 主题在渲染前应用，避免闪烁
+      try {
+        if (localStorage.getItem("nv_theme") === "light") document.documentElement.classList.remove("dark");
+        else document.documentElement.classList.add("dark");
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

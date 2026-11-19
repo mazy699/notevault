@@ -1,0 +1,51 @@
+{
+  "name": "notevault",
+  "productName": "NoteVault",
+  "version": "0.1.0",
+  "description": "NoteVault - AI 文档笔记查看器（Markdown / Mermaid / HTML）",
+  "author": "mazho",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "dev:web": "npm run build:node && node out-web/web/server.js",
+    "build:renderer": "vite build",
+    "build:node": "tsc -p tsconfig.node.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
+    "build": "npm run typecheck && npm run build:renderer && npm run build:node",
+    "test": "vitest run",
+    "web": "npm run build && node out-web/web/server.js --open",
+    "web:serve": "node out-web/web/server.js --open",
+    "tauri": "tauri",
+    "tauri:build": "npm run build && tauri build"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-clipboard-manager": "^2.3.2",
+    "@tauri-apps/plugin-dialog": "^2.4.1",
+    "highlight.js": "^11.12.0",
+    "katex": "^0.16.25",
+    "lucide-react": "^0.555.0",
+    "mermaid": "^11.12.2",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-markdown": "^10.1.0",
+    "rehype-highlight": "^7.0.2",
+    "rehype-katex": "^7.0.1",
+    "rehype-raw": "^7.0.0",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^26.6.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.1"
+  }
+}

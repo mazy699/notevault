@@ -147,6 +147,7 @@ export function DiffWorkbench() {
 
   async function loadGitLog(file: string, repo = repoPath.trim()) {
     if (!file || !repo) return;
+    setGitFile(file);
     setBusy("log");
     setError(null);
     try {

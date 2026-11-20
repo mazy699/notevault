@@ -260,6 +260,108 @@ pub fn dispatch(app: &tauri::AppHandle, cmd: &str, payload: &Value) -> Result<Va
             }))
         }
 
+        "fs_read_abs" => {
+            let abs = PathBuf::from(p.get("path").and_then(|v| v.as_str()).unwrap_or(""));
+            if !abs.is_absolute() {
+                return Err("需要绝对路径".into());
+            }
+            if !abs.is_file() {
+                return Err(format!("文件不存在或不可访问：{}", abs.display()));
+            }
+            let md = std::fs::metadata(&abs).map_err(|e| format!("读取失败：{}", e))?;
+            let name = abs.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+            let kind = fsops::kind_of(&name);
+            if matches!(kind, fsops::FileKind::Image | fsops::FileKind::Other) {
+                return Err(format!("不支持的文件类型：{}（仅支持文本/代码类文件对比）", name));
+            }
+            let truncated = md.len() > fsops::MAX_READ_BYTES;
+            let mut bytes: Vec<u8> = Vec::new();
+            {
+                use std::io::Read;
+                let f = std::fs::File::open(&abs).map_err(|e| format!("读取失败：{}", e))?;
+                f.take(fsops::MAX_READ_BYTES).read_to_end(&mut bytes).map_err(|e| format!("读取失败：{}", e))?;
+            }
+            let (content, encoding) = fsops::decode_text(&bytes);
+            Ok(json!({
+                "path": abs.display().to_string(), "name": name, "kind": kind,
+                "size": md.len(), "mtimeMs": fsops::mtime_ms_of(&md),
+                "content": content, "truncated": truncated, "encoding": encoding,
+            }))
+        }
+
+        "git_ls" => {
+            let repo = PathBuf::from(p.get("repoPath").and_then(|v| v.as_str()).unwrap_or(""));
+            if !repo.is_dir() {
+                return Err(format!("目录不存在或不可访问：{}", repo.display()));
+            }
+            let r = git_run(&["ls-files"], &repo)?;
+            let files: Vec<String> = r.lines().filter(|s| !s.trim().is_empty()).map(|s| s.to_string()).collect();
+            Ok(json!({ "files": files }))
+        }
+
+        "git_log" => {
+            let repo = PathBuf::from(p.get("repoPath").and_then(|v| v.as_str()).unwrap_or(""));
+            if !repo.is_dir() {
+                return Err(format!("目录不存在或不可访问：{}", repo.display()));
+            }
+            let file = p.get("filePath").and_then(|v| v.as_str()).unwrap_or("");
+            if file.is_empty() {
+                return Err("缺少文件路径".into());
+            }
+            let r = git_run(
+                &["log", "--pretty=format:%H%x1f%h%x1f%an%x1f%aI%x1f%s", "-n", "200", "--follow", "--", file],
+                &repo,
+            )?;
+            let commits: Vec<Value> = r
+                .lines()
+                .filter(|s| !s.trim().is_empty())
+                .map(|line| {
+                    let parts: Vec<&str> = line.split('\x1f').collect();
+                    json!({
+                        "hash": parts.first().copied().unwrap_or(""),
+                        "subject": format!("{} {}", parts.get(1).copied().unwrap_or(""), parts.get(4).copied().unwrap_or("")).trim().to_string(),
+                        "author": parts.get(2).copied().unwrap_or(""),
+                        "date": parts.get(3).copied().unwrap_or(""),
+                    })
+                })
+                .filter(|c| c["hash"].as_str().unwrap_or("") != "")
+                .collect();
+            Ok(json!({ "commits": commits }))
+        }
+
+        "git_show" => {
+            let repo = PathBuf::from(p.get("repoPath").and_then(|v| v.as_str()).unwrap_or(""));
+            if !repo.is_dir() {
+                return Err(format!("目录不存在或不可访问：{}", repo.display()));
+            }
+            let file = p.get("filePath").and_then(|v| v.as_str()).unwrap_or("");
+            let ref_name = p.get("ref").and_then(|v| v.as_str()).unwrap_or("");
+            if file.is_empty() || ref_name.is_empty() {
+                return Err("缺少文件路径或版本".into());
+            }
+            let name = file.rsplit('/').next().unwrap_or(file).to_string();
+            let kind = fsops::kind_of(&name);
+            if ref_name == "WORKDIR" {
+                return match fsops::read_file_content(&repo, file) {
+                    Ok(fc) => Ok(json!({
+                        "path": file, "name": fc.name, "kind": fc.kind, "size": fc.size,
+                        "mtimeMs": fc.mtime_ms, "content": fc.content, "truncated": fc.truncated, "encoding": fc.encoding,
+                    })),
+                    Err(e) => Err(e),
+                };
+            }
+            let mut bytes = git_run_bytes(&["show", &format!("{}:{}", ref_name, file)], &repo)?;
+            if bytes.len() as u64 > fsops::MAX_READ_BYTES {
+                bytes.truncate(fsops::MAX_READ_BYTES as usize);
+            }
+            let (content, encoding) = fsops::decode_text(&bytes);
+            Ok(json!({
+                "path": format!("{}@{}", file, &ref_name[..ref_name.len().min(10)]),
+                "name": name, "kind": kind, "size": bytes.len(), "mtimeMs": 0,
+                "content": content, "truncated": false, "encoding": encoding,
+            }))
+        }
+
         "settings_get" => {
             let key = p.get("key").and_then(|v| v.as_str()).unwrap_or("");
             let settings = state.settings.lock().unwrap();
@@ -316,6 +418,56 @@ fn open_external_default(path: &str) {
     let _ = std::process::Command::new("open").arg(path).spawn();
     #[cfg(all(unix, not(target_os = "macos")))]
     let _ = std::process::Command::new("xdg-open").arg(path).spawn();
+}
+
+/// git 只读命令（字符串输出）。参数数组调用，不经 shell，防注入。
+fn git_run(args: &[&str], cwd: &PathBuf) -> Result<String, String> {
+    let out = std::process::Command::new("git")
+        .args(["-C", cwd.to_string_lossy().as_ref(), "--no-pager", "-c", "core.quotepath=false"])
+        .args(args)
+        .output()
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                "未检测到 git 命令，请先安装 Git 并加入 PATH".to_string()
+            } else {
+                format!("git 执行失败：{}", e)
+            }
+        })?;
+    if !out.status.success() {
+        let combined = format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stderr).trim(),
+            String::from_utf8_lossy(&out.stdout).trim()
+        );
+        let line = combined.lines().last().unwrap_or("git 命令失败").to_string();
+        return Err(line.chars().take(300).collect());
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// git 命令（字节输出，供 git show 后做编码检测）
+fn git_run_bytes(args: &[&str], cwd: &PathBuf) -> Result<Vec<u8>, String> {
+    let out = std::process::Command::new("git")
+        .args(["-C", cwd.to_string_lossy().as_ref(), "--no-pager", "-c", "core.quotepath=false"])
+        .args(args)
+        .output()
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                "未检测到 git 命令，请先安装 Git 并加入 PATH".to_string()
+            } else {
+                format!("git 执行失败：{}", e)
+            }
+        })?;
+    if !out.status.success() {
+        let msg = format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout).trim(),
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
+        let line = msg.lines().last().unwrap_or("git 命令失败").to_string();
+        return Err(line.chars().take(300).collect());
+    }
+    Ok(out.stdout)
 }
 
 /// Tauri 命令入口：单一 api(cmd, payload) 与 Web 路由同构。

@@ -10,7 +10,7 @@ import { FileTree } from "../tree/FileTree";
 import { KindIcon } from "../common/KindIcon";
 import { splitByQuery } from "../../lib/format";
 import { locateTextInContent } from "../../lib/locate";
-import { findInTree } from "../viewer/MarkdownView";
+import { findInTree } from "../../lib/links";
 
 function FilesPage() {
   const [filter, setFilter] = useState("");

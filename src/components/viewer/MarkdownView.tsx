@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { lazy, memo, Suspense } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -7,111 +7,20 @@ import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import rehypeSlug from "rehype-slug";
 import rehypeHighlight from "rehype-highlight";
-import { Code2 } from "lucide-react";
-import { fileUrl, absFileUrl, isTauri, api } from "../../api/client";
-import { useTabs } from "../../stores/tabs";
-import { useVault } from "../../stores/vault";
-import { MermaidBlock } from "./MermaidBlock";
-import { copyText, CopyButton } from "./FileBar";
-
-/** 是否为文件系统绝对路径（Windows 盘符 / file://）。注意：以 / 开头的引用优先按库根相对解析。 */
-export function absPathLike(src: string): boolean {
-  return /^[a-zA-Z]:[\\/]/.test(src) || /^file:\/{2,}/i.test(src);
-}
-
-/** 库根相对路径（以 / 开头的写法）→ 若库内存在该文件则返回库内 URL，否则返回 null */
-function resolveRootRelative(src: string): string | null {
-  if (!src.startsWith("/")) return null;
-  const rel = src.slice(1);
-  const meta = findInTree(rel);
-  return meta ? fileUrl(rel) : null;
-}
-
-/** 还原 react-markdown 预编码的 URL（encodeURI 形式）后再做路径解析，避免双重编码 */
-function safeDecode(s: string): string {
-  try {
-    return decodeURI(s);
-  } catch {
-    return s;
-  }
-}
-
-/** 相对引用 → 笔记库内相对路径（POSIX）；无法解析时返回 null */
-export function resolveRelativeRef(href: string, currentPath: string): string | null {
-  if (!href || /^https?:\/\//i.test(href) || /^mailto:/i.test(href) || /^data:/i.test(href)) return null;
-  if (absPathLike(href)) return null;
-  const [pathPart] = safeDecode(href).split("#");
-  if (!pathPart) return null;
-  const dir = currentPath.includes("/") ? currentPath.slice(0, currentPath.lastIndexOf("/")).split("/") : [];
-  const segments = [...dir];
-  for (const seg of pathPart.split("/")) {
-    if (!seg || seg === ".") continue;
-    if (seg === "..") segments.pop();
-    else segments.push(seg);
-  }
-  return segments.join("/");
-}
-
-/** 在应用内打开库内链接（查树拿元数据；找不到则交给浏览器）；带锚点时滚动定位 */
-function openInternalLink(relPath: string): void {
-  const meta = findInTree(relPath);
-  if (meta) {
-    useTabs.getState().openFile(meta);
-  } else {
-    window.open(fileUrl(relPath), "_blank");
-  }
-}
-
-export function findInTree(relPath: string):
-  | { path: string; name: string; kind: any; size: number; mtimeMs: number }
-  | null {
-  const tree = useVault.getState().tree;
-  if (!tree) return null;
-  const stack = [tree];
-  while (stack.length) {
-    const n = stack.pop()!;
-    if (!n.dir && n.path === relPath) return n;
-    if (n.children) stack.push(...n.children);
-  }
-  return null;
-}
-
-/**
- * 滚动到标题锚点。Mermaid 等异步渲染会改变布局，
- * 所以在 ~2.5s 内反复校正滚动位置（每次 350ms）。
- */
-function scrollToAnchor(hash: string, attempt: number): void {
-  setTimeout(() => {
-    const el = document.getElementById(hash);
-    if (!el) {
-      if (attempt < 6) scrollToAnchor(hash, attempt + 1);
-      return;
-    }
-    el.scrollIntoView({ behavior: "smooth", block: "start" });
-    // 布局仍在增长时继续校正
-    if (attempt < 6 && el.getBoundingClientRect().top > 130) {
-      scrollToAnchor(hash, attempt + 1);
-    }
-  }, 350);
-}
-
-/** 提取 hast 节点的纯文本（代码块复制用） */
-function extractText(node: any): string {
-  if (!node) return "";
-  if (node.type === "text") return node.value ?? "";
-  if (node.children) return node.children.map(extractText).join("");
-  return "";
-}
-
-function langOf(node: any): string {
-  const code = node?.children?.find((c: any) => c.tagName === "code");
-  const classes: string[] = code?.properties?.className ?? [];
-  for (const c of classes) {
-    const m = /language-([\w+#-]+)/.exec(c);
-    if (m) return m[1];
-  }
-  return "";
-}
+import { fileUrl, absFileUrl } from "../../api/client";
+import {
+  absPathLike,
+  openExternalLink,
+  openInternalLink,
+  resolveRelativeRef,
+  resolveRootRelative,
+  safeDecode,
+} from "../../lib/links";
+/** Mermaid 块懒加载：仅文档中确实含 mermaid 时才拉取 mermaid 内核（~700KB） */
+const MermaidBlock = lazy(() => import("./MermaidBlock").then((m) => ({ default: m.MermaidBlock })));
+import { CopyButton } from "./FileBar";
+// KaTeX 样式随 Markdown 渲染栈一起按需加载（不在应用启动时引入）
+import "katex/dist/katex.min.css";
 
 /**
  * 消毒 schema：在默认（禁 script/事件处理器/javascript: URL）基础上，
@@ -135,6 +44,42 @@ const sanitizeSchema = {
     annotation: ["encoding"],
   },
 };
+
+/** 提取 hast 节点的纯文本（代码块复制用） */
+function extractText(node: any): string {
+  if (!node) return "";
+  if (node.type === "text") return node.value ?? "";
+  if (node.children) return node.children.map(extractText).join("");
+  return "";
+}
+
+function langOf(node: any): string {
+  const code = node?.children?.find((c: any) => c.tagName === "code");
+  const classes: string[] = code?.properties?.className ?? [];
+  for (const c of classes) {
+    const m = /language-([\w+#-]+)/.exec(c);
+    if (m) return m[1];
+  }
+  return "";
+}
+
+/**
+ * 滚动到标题锚点。Mermaid 等异步渲染会改变布局，
+ * 所以在 ~2.5s 内反复校正滚动位置（每次 350ms）。
+ */
+function scrollToAnchor(hash: string, attempt: number): void {
+  setTimeout(() => {
+    const el = document.getElementById(hash);
+    if (!el) {
+      if (attempt < 6) scrollToAnchor(hash, attempt + 1);
+      return;
+    }
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (attempt < 6 && el.getBoundingClientRect().top > 130) {
+      scrollToAnchor(hash, attempt + 1);
+    }
+  }, 350);
+}
 
 interface MarkdownViewProps {
   content: string;
@@ -175,6 +120,7 @@ export const MarkdownView = memo(function MarkdownView({ content, filePath, dark
                 src={resolved}
                 alt={alt ?? ""}
                 loading="lazy"
+                decoding="async"
                 {...rest}
                 onClick={(e) => {
                   const el = e.currentTarget;
@@ -193,17 +139,16 @@ export const MarkdownView = memo(function MarkdownView({ content, filePath, dark
           },
           a: ({ href, children, ...rest }) => {
             const raw = safeDecode(href ?? "");
-            const rootRel = !absPathLike(raw) && resolveRootRelative(raw);
+            const rootRel = !absPathLike(raw) ? resolveRootRelative(raw) : null;
             const external =
               /^https?:\/\//i.test(raw) || /^mailto:/i.test(raw) || (absPathLike(raw) && !resolveRootRelative(raw));
             if (rootRel) {
-              // /库根相对写法 且文件存在 → 应用内打开
               return (
                 <a
                   href={rootRel}
                   onClick={(e) => {
                     e.preventDefault();
-                    openInternalLink(safeDecode(raw).slice(1));
+                    openInternalLink(raw.slice(1));
                   }}
                   {...rest}
                 >
@@ -214,24 +159,19 @@ export const MarkdownView = memo(function MarkdownView({ content, filePath, dark
             if (external) {
               const isHttp = /^https?:\/\//i.test(raw);
               const target = isHttp ? raw : absFileUrl(raw.replace(/^file:\/{2,}/i, ""));
-              if (isTauri()) {
-                // 桌面版：交给系统默认程序打开（URL→浏览器，本地路径→系统关联程序）
-                const nativePath = raw.replace(/^file:\/{2,}/i, "").replace(/\//g, "\\");
-                return (
-                  <a
-                    href={target}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      void api.openExternal(isHttp ? raw : nativePath);
-                    }}
-                    {...rest}
-                  >
-                    {children}
-                  </a>
-                );
-              }
               return (
-                <a href={target} target="_blank" rel="noreferrer" {...rest}>
+                <a
+                  href={target}
+                  onClick={(e) => {
+                    if (!isHttp) {
+                      e.preventDefault();
+                      openExternalLink(raw);
+                    }
+                  }}
+                  target={isHttp ? "_blank" : undefined}
+                  rel="noreferrer"
+                  {...rest}
+                >
                   {children}
                 </a>
               );
@@ -262,7 +202,19 @@ export const MarkdownView = memo(function MarkdownView({ content, filePath, dark
             const lang = langOf(node);
             const text = extractText(node);
             if (lang === "mermaid") {
-              return <MermaidBlock code={text.trim()} dark={dark} />;
+              return (
+                <Suspense
+                  fallback={
+                    <div className="mermaid-block">
+                      <div className="loading-hint">
+                        <span className="spinner" /> 正在加载图表引擎…
+                      </div>
+                    </div>
+                  }
+                >
+                  <MermaidBlock code={text.trim()} dark={dark} />
+                </Suspense>
+              );
             }
             return (
               <div className="code-block">
@@ -274,7 +226,6 @@ export const MarkdownView = memo(function MarkdownView({ content, filePath, dark
               </div>
             );
           },
-          // 行内代码不套 code-block（pre 覆盖只影响块级）
         }}
       >
         {content}
@@ -282,54 +233,3 @@ export const MarkdownView = memo(function MarkdownView({ content, filePath, dark
     </div>
   );
 });
-
-/** HTML 文件：浏览器内核 iframe 渲染 */
-export function HtmlView({ path }: { path: string }) {
-  return (
-    <>
-      <div className="html-notice">
-        <Code2 size={13} style={{ color: "var(--warn)" }} />
-        已使用浏览器内核渲染此 HTML 文件 · 工具条可切换源码或在系统浏览器打开
-      </div>
-      <iframe
-        className="html-frame"
-        src={fileUrl(path)}
-        sandbox="allow-scripts allow-forms allow-popups allow-modals"
-        title="HTML 预览"
-      />
-    </>
-  );
-}
-
-/** 图片文件 */
-export function ImageView({ path }: { path: string }) {
-  return (
-    <div className="img-view">
-      <img src={fileUrl(path)} alt={path} />
-    </div>
-  );
-}
-
-/** 纯文本 */
-export function TextView({ content }: { content: string }) {
-  return (
-    <div className="source-view">
-      <div className="code-block">
-        <div className="cb-head">
-          <span className="cb-lang">text</span>
-          <button
-            className="cb-copy"
-            onClick={async () => {
-              await copyText(content);
-            }}
-          >
-            复制
-          </button>
-        </div>
-        <pre>
-          <code>{content}</code>
-        </pre>
-      </div>
-    </div>
-  );
-}

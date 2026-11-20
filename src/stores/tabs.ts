@@ -35,6 +35,31 @@ function sortTabsRecency(recents: string[]): (a: string, b: string) => number {
   return (a, b) => recents.indexOf(a) - recents.indexOf(b);
 }
 
+/** 内容缓存上限：超过时淘汰最旧的条目（当前打开的标签始终保留），控制长会话内存 */
+const MAX_CACHED_FILES = 12;
+
+export function evictIfNeeded(
+  content: Record<string, FileContent>,
+  keepPaths: string[],
+  justLoaded: string
+): Record<string, FileContent> {
+  const keys = Object.keys(content);
+  if (keys.length <= MAX_CACHED_FILES) return content;
+  const keep = new Set([...keepPaths, justLoaded]);
+  const out: Record<string, FileContent> = {};
+  // 从最旧（对象键插入顺序）开始保留到上限
+  const excess = keys.length - MAX_CACHED_FILES;
+  let removed = 0;
+  for (const k of keys) {
+    if (removed < excess && !keep.has(k)) {
+      removed++;
+      continue;
+    }
+    out[k] = content[k];
+  }
+  return out;
+}
+
 export const useTabs = create<TabsState>((set, get) => ({
   tabs: [],
   active: null,
@@ -108,7 +133,7 @@ export const useTabs = create<TabsState>((set, get) => ({
     set((st) => ({ loading: { ...st.loading, [path]: true } }));
     try {
       const fc = await api.fsRead(path);
-      set((st) => ({ content: { ...st.content, [path]: fc } }));
+      set((st) => ({ content: evictIfNeeded({ ...st.content, [path]: fc }, st.tabs.map((t) => t.path), path) }));
     } catch (e) {
       // 失败时塞入一个带错误标记的占位，避免无限重试
       set((st) => ({

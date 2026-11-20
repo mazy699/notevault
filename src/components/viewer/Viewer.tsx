@@ -1,12 +1,19 @@
+import { lazy, Suspense } from "react";
 import { useTabs } from "../../stores/tabs";
 import { useVault } from "../../stores/vault";
 import { api } from "../../api/client";
-import { MarkdownView, HtmlView, ImageView, TextView } from "./MarkdownView";
+import { HtmlView, ImageView } from "./SimpleViews";
 import { SourceView } from "./SourceView";
 import { Outline } from "./Outline";
 import { FileBar } from "./FileBar";
 import { Welcome } from "./Welcome";
 import { useUi } from "../../stores/ui";
+
+/**
+ * Markdown 渲染栈（react-markdown + rehype 全家桶 + katex + highlight.js）
+ * 体积较大，改为按需加载：仅打开 Markdown 文件时才拉取。
+ */
+const MarkdownView = lazy(() => import("./MarkdownView").then((m) => ({ default: m.MarkdownView })));
 
 /** 当前激活文件的渲染路由 */
 export function Viewer() {
@@ -58,11 +65,21 @@ export function Viewer() {
       </div>
     );
   } else if (isMd) {
-    body = <MarkdownView content={fc.content} filePath={tab.path} dark={dark} />;
+    body = (
+      <Suspense
+        fallback={
+          <div className="loading-hint" style={{ margin: "18px 44px" }}>
+            <span className="spinner" /> 正在准备渲染引擎…
+          </div>
+        }
+      >
+        <MarkdownView content={fc.content} filePath={tab.path} dark={dark} />
+      </Suspense>
+    );
   } else if (tab.kind === "html") {
     body = <HtmlView path={tab.path} />;
   } else {
-    body = <TextView content={fc.content} />;
+    body = <SourceView content={fc.content} kind={tab.kind} />;
   }
 
   const showOutline = isMd && tab.viewMode === "render" && outlineOpen;

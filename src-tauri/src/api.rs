@@ -421,7 +421,7 @@ fn open_external_default(path: &str) {
 }
 
 /// git 只读命令（字符串输出）。参数数组调用，不经 shell，防注入。
-fn git_run(args: &[&str], cwd: &PathBuf) -> Result<String, String> {
+pub(crate) fn git_run(args: &[&str], cwd: &PathBuf) -> Result<String, String> {
     let out = std::process::Command::new("git")
         .args(["-C", cwd.to_string_lossy().as_ref(), "--no-pager", "-c", "core.quotepath=false"])
         .args(args)
@@ -446,7 +446,7 @@ fn git_run(args: &[&str], cwd: &PathBuf) -> Result<String, String> {
 }
 
 /// git 命令（字节输出，供 git show 后做编码检测）
-fn git_run_bytes(args: &[&str], cwd: &PathBuf) -> Result<Vec<u8>, String> {
+pub(crate) fn git_run_bytes(args: &[&str], cwd: &PathBuf) -> Result<Vec<u8>, String> {
     let out = std::process::Command::new("git")
         .args(["-C", cwd.to_string_lossy().as_ref(), "--no-pager", "-c", "core.quotepath=false"])
         .args(args)

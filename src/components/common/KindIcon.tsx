@@ -1,4 +1,13 @@
-import { FileText, Code2, FileType2, Image as ImageIcon, File as FileIcon, Folder, FolderOpen } from "lucide-react";
+import {
+  FileText,
+  Code2,
+  FileType2,
+  Image as ImageIcon,
+  File as FileIcon,
+  FileCode,
+  Folder,
+  FolderOpen,
+} from "lucide-react";
 import type { CSSProperties } from "react";
 import type { FileKind } from "../../../shared/types";
 
@@ -6,6 +15,7 @@ const KIND_STYLE: Record<FileKind, { color: string; Icon: typeof FileText }> = {
   markdown: { color: "#8b7bff", Icon: FileText },
   html: { color: "#f0925a", Icon: Code2 },
   text: { color: "#9ea1a8", Icon: FileType2 },
+  code: { color: "#4cc38a", Icon: FileCode },
   image: { color: "#4cc3c9", Icon: ImageIcon },
   other: { color: "#6e7076", Icon: FileIcon },
 };

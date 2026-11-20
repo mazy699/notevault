@@ -21,25 +21,53 @@ pub enum FileKind {
     Html,
     Text,
     Image,
+    Code,
     Other,
 }
+
+/// 代码/配置类扩展名（带语法高亮预览），与 shared/types.ts CODE_EXTS 保持一致
+const CODE_EXTS: &[&str] = &[
+    "ts", "tsx", "js", "jsx", "mjs", "cjs",
+    "py", "pyw", "java", "kt", "kts", "scala", "sc", "groovy",
+    "c", "h", "cpp", "hpp", "cc", "hh", "cs",
+    "go", "rs", "rb", "php", "swift", "dart",
+    "lua", "pl", "pm", "r", "vb",
+    "sh", "bash", "zsh", "ps1", "psm1", "bat", "cmd",
+    "sql", "json", "yaml", "yml", "toml",
+    "vue", "svelte", "gradle", "cmake", "asm", "s",
+];
 
 pub fn kind_of(name: &str) -> FileKind {
     let ext = match name.rfind('.') {
         Some(i) => name[i + 1..].to_lowercase(),
         None => String::new(),
     };
-    match ext.as_str() {
-        "md" | "markdown" | "mdx" => FileKind::Markdown,
-        "html" | "htm" => FileKind::Html,
-        "txt" | "log" | "json" | "yaml" | "yml" | "toml" | "csv" | "ini" | "cfg" => FileKind::Text,
-        "png" | "jpg" | "jpeg" | "gif" | "svg" | "webp" | "bmp" | "ico" => FileKind::Image,
-        _ => FileKind::Other,
+    if ext.is_empty() {
+        return FileKind::Other;
     }
+    if matches!(ext.as_str(), "md" | "markdown" | "mdx") {
+        return FileKind::Markdown;
+    }
+    if matches!(ext.as_str(), "html" | "htm") {
+        return FileKind::Html;
+    }
+    if CODE_EXTS.contains(&ext.as_str()) {
+        return FileKind::Code;
+    }
+    if matches!(ext.as_str(), "txt" | "log" | "csv" | "ini" | "cfg") {
+        return FileKind::Text;
+    }
+    if matches!(
+        ext.as_str(),
+        "png" | "jpg" | "jpeg" | "gif" | "svg" | "webp" | "bmp" | "ico"
+    ) {
+        return FileKind::Image;
+    }
+    FileKind::Other
 }
 
 pub fn is_text_kind(k: FileKind) -> bool {
-    matches!(k, FileKind::Markdown | FileKind::Html | FileKind::Text)
+    matches!(k, FileKind::Markdown | FileKind::Html | FileKind::Text | FileKind::Code)
 }
 
 pub fn is_ignored_dir(name: &str) -> bool {

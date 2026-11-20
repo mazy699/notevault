@@ -1,7 +1,7 @@
 {
   "name": "notevault",
   "productName": "NoteVault",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "NoteVault - AI 文档笔记查看器（Markdown / Mermaid / HTML）",
   "author": "mazho",
   "license": "MIT",
@@ -43,6 +43,7 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
+    "@tauri-apps/cli": "^2.12.6",
     "@types/node": "^26.6.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",

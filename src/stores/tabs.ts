@@ -129,7 +129,7 @@ export const useTabs = create<TabsState>((set, get) => ({
   loadContent: async (path) => {
     const s = get();
     if (s.content[path] || s.loading[path]) return;
-    if (!["markdown", "html", "text"].includes(s.tabs.find((t) => t.path === path)?.kind ?? "")) return;
+    if (!["markdown", "html", "text", "code"].includes(s.tabs.find((t) => t.path === path)?.kind ?? "")) return;
     set((st) => ({ loading: { ...st.loading, [path]: true } }));
     try {
       const fc = await api.fsRead(path);

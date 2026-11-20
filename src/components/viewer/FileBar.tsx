@@ -93,7 +93,11 @@ export function FileBar() {
         </div>
       ) : (
         <span style={{ fontSize: 12, color: "var(--text-faint)" }}>
-          {tab.kind === "image" ? "图片预览" : "纯文本"}
+          {tab.kind === "image"
+            ? "图片预览"
+            : tab.kind === "code"
+              ? "代码文件（语法高亮预览）"
+              : "纯文本"}
         </span>
       )}
 

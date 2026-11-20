@@ -7,20 +7,30 @@
 - UI 设计：[docs/02-UI设计.md](docs/02-UI设计.md)
 - 开发记录：[docs/03-开发计划.md](docs/03-开发计划.md)
 
-## 两种使用方式（功能完全一致）
+## 下载与安装
 
-### 方式一：桌面版（免安装）
+从 [GitHub Releases](../../releases) 下载（每个版本附带 `checksums.txt`，供 IT 白名单与完整性校验）。
+
+### 方式一：安装版（NSIS 向导）
 
 ```
-release/NoteVault_<版本>_portable.exe   ← 与同目录 WebView2Loader.dll 一起使用
+NoteVault_<版本>_setup.exe
 ```
 
-- 双击直接运行，无需安装；依赖系统自带的 WebView2（Windows 10/11 自带）；
+- 双击运行向导，默认安装到当前用户目录，**无需管理员权限**；
+- 安装后从开始菜单/桌面快捷方式启动。
+
+### 方式二：免安装便携版
+
+```
+NoteVault_<版本>_portable.exe   ← 与同目录 WebView2Loader.dll 一起使用
+```
+
+- 双击直接运行；依赖系统自带的 WebView2（Windows 10/11 自带）；
 - **注意**：exe 需与 `WebView2Loader.dll` 保持同目录（`npm run pack:portable` 已自动放置）；
-- 无数字签名：若公司策略拦截无法运行，请使用方式二；
 - 所有渲染资源（mermaid / katex / highlight.js）已内嵌，**离线可用**。
 
-### 方式二：Web 版（浏览器访问）
+### 方式三：Web 版（浏览器访问）
 
 环境要求：Node.js ≥ 20。
 
@@ -35,12 +45,17 @@ npm run web        # 启动并自动打开浏览器（仅监听 127.0.0.1:8321�
 - 启动参数：`--port=8321` 换端口、`--vault=D:\notes` 指定笔记目录、`--open` 自动打开浏览器；
 - 首次进入时在顶栏选择笔记目录即可（会记忆，下次自动加载）。
 
+> **被杀毒软件拦截？** 未签名 exe 可能被 Symantec 等企业杀软判定为
+> "Unproven Insight" 并隔离。解决路径（IT 白名单 / 误报申诉 / 证书）见
+> [docs/05-杀毒软件与发布说明.md](docs/05-杀毒软件与发布说明.md)；
+> 被拦截时 **Web 版不受影响**，可作为兜底方式。
+
 ## 功能清单
 
 | 功能 | 说明 |
 | --- | --- |
 | 目录树 | 多级目录、按类型着色图标、名称过滤、展开/收起 |
-| 自动渲染 | `.md` 走 Markdown 管线；`.html` 用浏览器内核 iframe 渲染；图片文件预览 |
+| 自动渲染 | `.md` 走 Markdown 管线；`.html` 用浏览器内核 iframe 渲染；图片文件预览；**代码/配置文件语法高亮**（sql/py/java/c/cpp/cs/go/rs/rb/php/ts/js/json/yaml/sh/ps1 等约 50 种扩展名） |
 | Markdown | GFM 表格/任务列表/脚注、代码高亮（全语言）、KaTeX 公式、内嵌 HTML、Mermaid 图（主题联动） |
 | 源码视图 | 渲染/源码一键切换（Ctrl+E），源码带语法高亮与行数信息 |
 | 复制 | 顶栏「复制源码」复制全文；每个代码块右上角独立复制按钮 |

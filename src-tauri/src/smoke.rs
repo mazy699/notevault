@@ -13,6 +13,7 @@ pub fn run() {
     std::fs::write(dir.join("a.md"), md).expect("写入 a.md");
     std::fs::write(dir.join("sub/b.html"), "<html><body><p>html 内容 keyword</p><script>var x=1;</script></body></html>").expect("写入 b.html");
     std::fs::write(dir.join("sub/图片.png"), [0u8, 1, 2, 3]).expect("写入 c");
+    std::fs::write(dir.join("sub/query.sql"), "SELECT id FROM docs WHERE type = 'md';\n").expect("写入 sql");
 
     macro_rules! check {
         ($name:expr, $cond:expr) => {{
@@ -32,7 +33,7 @@ pub fn run() {
             let children = t.children.as_ref().unwrap();
             check!("tree_children_count", children.len() == 2); // a.md + sub
             let sub = children.iter().find(|c| c.name == "sub").unwrap();
-            check!("tree_sub_children", sub.children.as_ref().unwrap().len() == 2);
+            check!("tree_sub_children", sub.children.as_ref().unwrap().len() == 3); // b.html + 图片.png + query.sql
             let a = children.iter().find(|c| c.name == "a.md").unwrap();
             check!("tree_kind_markdown", matches!(a.kind, crate::fsops::FileKind::Markdown));
         }
@@ -60,11 +61,11 @@ pub fn run() {
     let matches_cs = crate::fsops::find_matches("KEYWORD 大写\nkeyword 小写", "keyword", 8, true);
     check!("search_case_sensitive", matches_cs.len() == 1 && matches_cs[0].line == 2);
 
-    // 4. 快照（3 个文件：a.md、sub/b.html、sub/图片.png）
+    // 4. 快照（4 个文件：a.md、sub/b.html、sub/图片.png、sub/query.sql）
     let snap = crate::fsops::snapshot(&dir);
     match &snap {
         Ok((entries, truncated)) => {
-            check!("snapshot_entries", entries.len() == 3 && !*truncated);
+            check!("snapshot_entries", entries.len() == 4 && !*truncated);
         }
         Err(_) => check!("snapshot_ok", false),
     }
@@ -72,6 +73,16 @@ pub fn run() {
     // 5. GBK 解码
     let (text, enc) = crate::fsops::decode_text(&[0xd6, 0xd0, 0xce, 0xc4]);
     check!("gbk_decode", enc == "gbk" && text == "中文");
+
+    // 6. 代码文件分类与读取（sql → code 类型，可读、可搜索）
+    check!("kind_sql_code", matches!(crate::fsops::kind_of("query.sql"), crate::fsops::FileKind::Code));
+    match crate::fsops::read_file_content(&dir, "sub/query.sql") {
+        Ok(fc) => {
+            check!("code_read", fc.content.contains("SELECT") && fc.encoding == "utf-8");
+            check!("code_kind", matches!(fc.kind, crate::fsops::FileKind::Code));
+        }
+        Err(_) => check!("code_read_ok", false),
+    }
 
     let _ = std::fs::remove_dir_all(&dir);
 

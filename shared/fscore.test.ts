@@ -137,4 +137,22 @@ describe("kindOf", () => {
     expect(isTextKind(kindOf("f.md"))).toBe(true);
     expect(isTextKind(kindOf("g.png"))).toBe(false);
   });
+
+  it("代码/配置文件识别为 code 类型", () => {
+    expect(kindOf("query.sql")).toBe("code");
+    expect(kindOf("算法.py")).toBe("code");
+    expect(kindOf("Main.java")).toBe("code");
+    expect(kindOf("app.rs")).toBe("code");
+    expect(kindOf("run.sh")).toBe("code");
+    expect(kindOf("config.json")).toBe("code");
+    expect(kindOf("deploy.yaml")).toBe("code");
+    expect(kindOf("App.tsx")).toBe("code");
+    expect(isTextKind(kindOf("query.sql"))).toBe(true);
+  });
+
+  it("无扩展名文件是 other（与 Rust 端一致）", () => {
+    expect(kindOf("Makefile")).toBe("other");
+    expect(kindOf("LICENSE")).toBe("other");
+    expect(kindOf("md")).toBe("other");
+  });
 });

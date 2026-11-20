@@ -78,6 +78,8 @@ export function Viewer() {
     );
   } else if (tab.kind === "html") {
     body = <HtmlView path={tab.path} />;
+  } else if (tab.kind === "code") {
+    body = <SourceView content={fc.content} kind="code" path={tab.path} />;
   } else {
     body = <SourceView content={fc.content} kind={tab.kind} />;
   }

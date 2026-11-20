@@ -7,7 +7,19 @@
  * - 仅 vault_set / open_external / reveal_in_explorer 接受绝对路径
  */
 
-export type FileKind = "markdown" | "html" | "text" | "image" | "other";
+export type FileKind = "markdown" | "html" | "text" | "image" | "code" | "other";
+
+/** 代码/配置类扩展名（带语法高亮预览），与 Rust 端 fsops.rs 保持一致 */
+export const CODE_EXTS = [
+  "ts", "tsx", "js", "jsx", "mjs", "cjs",
+  "py", "pyw", "java", "kt", "kts", "scala", "sc", "groovy",
+  "c", "h", "cpp", "hpp", "cc", "hh", "cs",
+  "go", "rs", "rb", "php", "swift", "dart",
+  "lua", "pl", "pm", "r", "vb",
+  "sh", "bash", "zsh", "ps1", "psm1", "bat", "cmd",
+  "sql", "json", "yaml", "yml", "toml",
+  "vue", "svelte", "gradle", "cmake", "asm", "s",
+] as const;
 
 export interface FileMeta {
   /** 相对笔记库根的 POSIX 路径，如 "docs/设计.md" */
@@ -80,14 +92,15 @@ export function kindOf(name: string): FileKind {
   const ext = i === -1 ? "" : name.slice(i + 1).toLowerCase();
   if (["md", "markdown", "mdx"].includes(ext)) return "markdown";
   if (["html", "htm"].includes(ext)) return "html";
-  if (["txt", "log", "json", "yaml", "yml", "toml", "csv", "ini", "cfg"].includes(ext)) return "text";
+  if ((CODE_EXTS as readonly string[]).includes(ext)) return "code";
+  if (["txt", "log", "csv", "ini", "cfg"].includes(ext)) return "text";
   if (["png", "jpg", "jpeg", "gif", "svg", "webp", "bmp", "ico"].includes(ext)) return "image";
   return "other";
 }
 
-/** 可作为文本读取渲染的 kind */
+/** 可作为文本读取渲染的 kind（含代码/配置文件，全文搜索也覆盖这些） */
 export function isTextKind(kind: FileKind): boolean {
-  return kind === "markdown" || kind === "html" || kind === "text";
+  return kind === "markdown" || kind === "html" || kind === "text" || kind === "code";
 }
 
 /** API 命令名清单（编译期保证前后端一致用） */

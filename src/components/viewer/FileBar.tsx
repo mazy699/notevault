@@ -38,16 +38,18 @@ export function CopyButton({
   text,
   label,
   className = "cb-copy",
+  title = "复制源码",
 }: {
   text: string;
   label?: string;
   className?: string;
+  title?: string;
 }) {
   const [done, setDone] = useState(false);
   return (
     <button
       className={`${className}${done ? " done" : ""}`}
-      title="复制源码"
+      title={title}
       onClick={async () => {
         const ok = await copyText(text);
         if (ok) {

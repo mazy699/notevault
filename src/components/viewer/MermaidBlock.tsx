@@ -1,17 +1,15 @@
-import { useEffect, useRef, useState } from "react";
-import { Check, Copy } from "lucide-react";
-import { copyText } from "./FileBar";
+import { useEffect, useState } from "react";
+import { CopyButton } from "./FileBar";
 
 let mermaidSeq = 0;
 
 /**
  * Mermaid 图渲染块：动态加载 mermaid（首屏不加载 ~1MB 包），主题联动重渲染。
+ * 结构与代码块一致：块顶工具栏（左：语言标签 / 右：复制 Mermaid 源码按钮）+ 图表区域。
  */
 export function MermaidBlock({ code, dark }: { code: string; dark: boolean }) {
   const [svg, setSvg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
-  const boxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -35,7 +33,6 @@ export function MermaidBlock({ code, dark }: { code: string; dark: boolean }) {
         document.getElementById(`d${id}`)?.remove();
         if (!cancelled) {
           setSvg(svg);
-          setDone(true);
         }
       } catch (e) {
         if (!cancelled) {
@@ -51,35 +48,26 @@ export function MermaidBlock({ code, dark }: { code: string; dark: boolean }) {
 
   return (
     <div className="mermaid-block">
-      <div className="cb-head" style={{ position: "absolute", top: 0, right: 0, border: "none", background: "transparent" }}>
+      <div className="cb-head">
         <span className="cb-lang">mermaid</span>
-        <button
-          className={`cb-copy${done ? " done" : ""}`}
-          title="复制 Mermaid 源码"
-          onClick={async () => {
-            if (await copyText(code)) {
-              setDone(true);
-              setTimeout(() => setDone(false), 1400);
-            }
-          }}
-        >
-          {done ? <Check size={13} /> : <Copy size={13} />}
-        </button>
+        {error ? <span className="mm-flag">渲染失败</span> : null}
+        <CopyButton text={code} label="复制源码" className="cb-copy labeled" title="复制 Mermaid 源码" />
       </div>
-      {error ? (
-        <div className="mm-error">Mermaid 渲染失败：{error}</div>
-      ) : svg ? (
-        <div
-          ref={boxRef}
-          className="mm-svg"
-          style={{ width: "100%", display: "flex", justifyContent: "center" }}
-          dangerouslySetInnerHTML={{ __html: svg }}
-        />
-      ) : (
-        <div className="loading-hint">
-          <span className="spinner" /> 正在渲染图表…
-        </div>
-      )}
+      <div className="mm-body">
+        {error ? (
+          <div className="mm-error">Mermaid 渲染失败：{error}</div>
+        ) : svg ? (
+          <div
+            className="mm-svg"
+            style={{ width: "100%", display: "flex", justifyContent: "center" }}
+            dangerouslySetInnerHTML={{ __html: svg }}
+          />
+        ) : (
+          <div className="loading-hint">
+            <span className="spinner" /> 正在渲染图表…
+          </div>
+        )}
+      </div>
     </div>
   );
 }

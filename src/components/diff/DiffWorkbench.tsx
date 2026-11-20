@@ -5,6 +5,7 @@ import {
   FolderGit2,
   GitCompare,
   Loader2,
+  Pencil,
   Play,
 } from "lucide-react";
 import {
@@ -45,7 +46,8 @@ function saveInputs(patch: Record<string, string>): void {
   }
 }
 
-/** 对比工作台：文件 / 文本 / Git 三种输入模式 + 双栏 Diff 视图 */
+/** 对比工作台：文件 / 文本 / Git 三种输入模式 + 双栏 Diff 视图。
+ *  三个模式的结果各自独立记忆，切换页签互不串扰。 */
 export function DiffWorkbench() {
   const [mode, setMode] = useState<Mode>("file");
   const [viewKind, setViewKind] = useState<ViewKind>("side");
@@ -64,8 +66,13 @@ export function DiffWorkbench() {
   const [refB, setRefB] = useState("WORKDIR");
   const [busy, setBusy] = useState<string | null>(null);
 
-  const [result, setResult] = useState<DiffResult | null>(null);
+  /** 每个模式独立的结果 */
+  const [results, setResults] = useState<Partial<Record<Mode, DiffResult>>>({});
+  /** 文本模式：编辑态（显示输入框）还是结果态（显示 diff） */
+  const [textEditing, setTextEditing] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const result = results[mode];
 
   useEffect(() => {
     saveInputs({ oldPath, newPath, repoPath });
@@ -75,43 +82,47 @@ export function DiffWorkbench() {
     return () => window.clearTimeout(t);
   }, [oldTextIn, newTextIn]);
 
-  async function runDiff() {
-    setBusy("run");
+  function setModeResult(m: Mode, r: DiffResult | undefined) {
+    setResults((prev) => ({ ...prev, [m]: r }));
+  }
+
+  async function runFileDiff() {
+    setBusy("file");
     setError(null);
     try {
-      if (mode === "file") {
-        if (!oldPath.trim() || !newPath.trim()) throw new Error("请输入两个文件路径");
-        const [a, b] = await Promise.all([
-          api.fsReadAbs(oldPath.trim()),
-          api.fsReadAbs(newPath.trim()),
-        ]);
-        setResult({
-          oldText: a.content,
-          newText: b.content,
-          oldLabel: oldPath.trim(),
-          newLabel: newPath.trim(),
-        });
-      } else if (mode === "text") {
-        setResult({ oldText: oldTextIn, newText: newTextIn, oldLabel: "文本 A", newLabel: "文本 B" });
-      } else {
-        if (!gitFile) throw new Error("请先读取仓库并选择文件");
-        const oldC = await api.gitShow(repoPath.trim(), gitFile, refA);
-        const newC = await api.gitShow(repoPath.trim(), gitFile, refB);
-        const name = (ref: string) => (ref === "WORKDIR" ? "工作区" : ref.slice(0, 8));
-        setResult({
-          oldText: oldC.content,
-          newText: newC.content,
-          oldLabel: `${gitFile} @ ${name(refA)}`,
-          newLabel: `${gitFile} @ ${name(refB)}`,
-        });
-      }
+      const [a, b] = await Promise.all([
+        api.fsReadAbs(oldPath.trim()),
+        api.fsReadAbs(newPath.trim()),
+      ]);
+      setModeResult("file", {
+        oldText: a.content,
+        newText: b.content,
+        oldLabel: oldPath.trim(),
+        newLabel: newPath.trim(),
+      });
     } catch (e) {
-      setResult(null);
+      setModeResult("file", undefined);
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(null);
     }
   }
+
+  /** 文本模式：两侧都有内容时自动对比 */
+  useEffect(() => {
+    if (mode !== "text" || !textEditing) return;
+    if (oldTextIn.trim() === "" || newTextIn.trim() === "") return;
+    const t = setTimeout(() => {
+      setModeResult("text", {
+        oldText: oldTextIn,
+        newText: newTextIn,
+        oldLabel: `文本 A（${oldTextIn.length} 字符）`,
+        newLabel: `文本 B（${newTextIn.length} 字符）`,
+      });
+      setTextEditing(false);
+    }, 600);
+    return () => window.clearTimeout(t);
+  }, [oldTextIn, newTextIn, mode, textEditing]);
 
   function swap() {
     if (mode === "file") {
@@ -124,7 +135,11 @@ export function DiffWorkbench() {
       setRefA(refB);
       setRefB(refA);
     }
-    setResult((r) => (r ? { ...r, oldText: r.newText, newText: r.oldText, oldLabel: r.newLabel, newLabel: r.oldLabel } : r));
+    setResults((prev) => {
+      const r = prev[mode];
+      if (!r) return prev;
+      return { ...prev, [mode]: { ...r, oldText: r.newText, newText: r.oldText, oldLabel: r.newLabel, newLabel: r.oldLabel } };
+    });
   }
 
   async function loadRepo() {
@@ -172,7 +187,7 @@ export function DiffWorkbench() {
     mode === "file"
       ? oldPath.trim() !== "" && newPath.trim() !== ""
       : mode === "text"
-        ? oldTextIn !== "" || newTextIn !== ""
+        ? false // 文本模式自动对比
         : gitFile !== "" && repoPath.trim() !== "";
 
   return (
@@ -186,6 +201,7 @@ export function DiffWorkbench() {
               onClick={() => {
                 setMode(m);
                 setError(null);
+                if (m === "text") setTextEditing(!results.text);
               }}
             >
               {m === "file" ? "文件" : m === "text" ? "文本" : "Git"}
@@ -211,10 +227,20 @@ export function DiffWorkbench() {
           />
           忽略空白
         </label>
+        {/* 文本模式结果态：重新编辑入口 */}
+        {mode === "text" && !textEditing && (
+          <button className="btn-ghost" onClick={() => setTextEditing(true)}>
+            <Pencil size={13} />
+            重新编辑
+          </button>
+        )}
       </div>
 
-      <div className="diff-inputs">
-        {mode === "file" && (
+      {/* 输入区：文件 / Git 常驻；文本模式仅编辑态显示 */}
+      {error && <div className="diff-error" style={{ margin: "8px 12px" }}>{error}</div>}
+
+      {mode === "file" && (
+        <div className="diff-inputs">
           <div className="row">
             <span className="tag">旧</span>
             <input
@@ -234,93 +260,107 @@ export function DiffWorkbench() {
               value={newPath}
               onChange={(e) => setNewPath(e.target.value)}
               spellCheck={false}
-              onKeyDown={(e) => e.key === "Enter" && canRun && void runDiff()}
+              onKeyDown={(e) => e.key === "Enter" && canRun && void runFileDiff()}
             />
-            <button className="btn-ghost" disabled={!canRun || busy !== null} onClick={() => void runDiff()}>
-              {busy === "run" ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
+            <button
+              className="btn-ghost"
+              disabled={!canRun || busy !== null}
+              onClick={() => void runFileDiff()}
+            >
+              {busy === "file" ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
               对比
             </button>
           </div>
-        )}
-        {mode === "text" && (
+        </div>
+      )}
+
+      {mode === "text" && textEditing && (
+        <div className="diff-inputs">
           <div className="row" style={{ alignItems: "stretch" }}>
-            <textarea placeholder="文本 A" value={oldTextIn} onChange={(e) => setOldTextIn(e.target.value)} spellCheck={false} />
+            <textarea placeholder="文本 A（粘贴旧内容）" value={oldTextIn} onChange={(e) => setOldTextIn(e.target.value)} spellCheck={false} />
             <button className="icon-btn" style={{ flex: "none", alignSelf: "center" }} title="交换两侧" onClick={swap}>
               <ArrowLeftRight size={14} />
             </button>
-            <textarea placeholder="文本 B" value={newTextIn} onChange={(e) => setNewTextIn(e.target.value)} spellCheck={false} />
-            <button
-              className="btn-ghost"
-              style={{ flex: "none", alignSelf: "center" }}
-              disabled={busy !== null}
-              onClick={() => void runDiff()}
+            <textarea placeholder="文本 B（粘贴新内容）" value={newTextIn} onChange={(e) => setNewTextIn(e.target.value)} spellCheck={false} />
+          </div>
+          <div style={{ fontSize: 11.5, color: "var(--text-faint)" }}>
+            两侧都有内容后自动开始对比；结果全屏显示，点「重新编辑」返回修改。
+          </div>
+        </div>
+      )}
+      {mode === "text" && !textEditing && result && (
+        <div className="diff-text-summary">
+          <span className="sum-label">{result.oldLabel}</span>
+          <ArrowLeftRight size={13} style={{ color: "var(--text-faint)" }} />
+          <span className="sum-label">{result.newLabel}</span>
+          <span style={{ flex: 1 }} />
+          <button className="btn-ghost" onClick={() => setTextEditing(true)}>
+            <Pencil size={12} />
+            重新编辑
+          </button>
+        </div>
+      )}
+
+      {mode === "git" && (
+        <div className="diff-inputs">
+          <div className="row">
+            <span className="tag">仓库</span>
+            <input
+              type="text"
+              placeholder="Git 仓库绝对路径，如 D:\code\my-project"
+              value={repoPath}
+              onChange={(e) => setRepoPath(e.target.value)}
+              spellCheck={false}
+              onKeyDown={(e) => e.key === "Enter" && void loadRepo()}
+            />
+            <button className="btn-ghost" disabled={busy !== null || !repoPath.trim()} onClick={() => void loadRepo()}>
+              {busy === "repo" ? <Loader2 size={13} className="animate-spin" /> : <FolderGit2 size={13} />}
+              读取文件列表
+            </button>
+          </div>
+          <div className="row">
+            <span className="tag">文件</span>
+            <select
+              className="diff-select"
+              value={gitFile}
+              onChange={(e) => void loadGitLog(e.target.value)}
+              disabled={gitFiles.length === 0}
             >
+              {gitFiles.length === 0 ? <option value="">（先读取文件列表）</option> : null}
+              {gitFiles.map((f) => (
+                <option key={f} value={f}>{f}</option>
+              ))}
+            </select>
+          </div>
+          <div className="row">
+            <span className="tag">版本</span>
+            <select
+              className="diff-select"
+              value={refA}
+              onChange={(e) => setRefA(e.target.value)}
+              disabled={gitCommits.length === 0}
+            >
+              {gitCommits.length === 0 ? <option value="">（选择文件后加载提交历史）</option> : null}
+              {gitCommits.map((c) => (
+                <option key={c.hash} value={c.hash}>{c.label}</option>
+              ))}
+            </select>
+            <span className="tag" style={{ textAlign: "center" }}>→</span>
+            <select className="diff-select" value={refB} onChange={(e) => setRefB(e.target.value)} disabled={gitCommits.length === 0}>
+              <option value="WORKDIR">工作区（当前磁盘内容）</option>
+              {gitCommits.map((c) => (
+                <option key={c.hash} value={c.hash}>{c.label}</option>
+              ))}
+            </select>
+            <button className="btn-ghost" disabled={!canRun || busy !== null} onClick={() => void runGitDiff()}>
               {busy === "run" ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
               对比
             </button>
           </div>
-        )}
-        {mode === "git" && (
-          <>
-            <div className="row">
-              <span className="tag">仓库</span>
-              <input
-                type="text"
-                placeholder="Git 仓库绝对路径，如 D:\code\my-project"
-                value={repoPath}
-                onChange={(e) => setRepoPath(e.target.value)}
-                spellCheck={false}
-                onKeyDown={(e) => e.key === "Enter" && void loadRepo()}
-              />
-              <button className="btn-ghost" disabled={busy !== null || !repoPath.trim()} onClick={() => void loadRepo()}>
-                {busy === "repo" ? <Loader2 size={13} className="animate-spin" /> : <FolderGit2 size={13} />}
-                读取文件列表
-              </button>
-            </div>
-            <div className="row">
-              <span className="tag">文件</span>
-              <select
-                className="diff-select"
-                value={gitFile}
-                onChange={(e) => void loadGitLog(e.target.value)}
-                disabled={gitFiles.length === 0}
-              >
-                {gitFiles.length === 0 ? <option value="">（先读取文件列表）</option> : null}
-                {gitFiles.map((f) => (
-                  <option key={f} value={f}>{f}</option>
-                ))}
-              </select>
-            </div>
-            <div className="row">
-              <span className="tag">版本</span>
-              <select
-                className="diff-select"
-                value={refA}
-                onChange={(e) => setRefA(e.target.value)}
-                disabled={gitCommits.length === 0}
-              >
-                {gitCommits.length === 0 ? <option value="">（选择文件后加载提交历史）</option> : null}
-                {gitCommits.map((c) => (
-                  <option key={c.hash} value={c.hash}>{c.label}</option>
-                ))}
-              </select>
-              <span className="tag" style={{ textAlign: "center" }}>→</span>
-              <select className="diff-select" value={refB} onChange={(e) => setRefB(e.target.value)} disabled={gitCommits.length === 0}>
-                <option value="WORKDIR">工作区（当前磁盘内容）</option>
-                {gitCommits.map((c) => (
-                  <option key={c.hash} value={c.hash}>{c.label}</option>
-                ))}
-              </select>
-              <button className="btn-ghost" disabled={!canRun || busy !== null} onClick={() => void runDiff()}>
-                {busy === "run" ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
-                对比
-              </button>
-            </div>
-          </>
-        )}
-        {error && <div className="diff-error">{error}</div>}
-      </div>
+        </div>
+      )}
 
+      {/* Diff 视图 */}
       {result ? (
         <DiffView result={result} viewKind={viewKind} ignoreWhitespace={ignoreWhitespace} />
       ) : (
@@ -328,7 +368,7 @@ export function DiffWorkbench() {
           <div>
             <GitCompare size={30} style={{ marginBottom: 10, opacity: 0.5 }} />
             <div style={{ lineHeight: 2 }}>
-              <b>文件</b>：对比两个文本/代码文件 · <b>文本</b>：直接粘贴两段内容 ·{" "}
+              <b>文件</b>：对比两个文本/代码/SQL 文件 · <b>文本</b>：粘贴两段内容自动对比 ·{" "}
               <b>Git</b>：选仓库文件的历史版本对比
             </div>
           </div>
@@ -336,6 +376,27 @@ export function DiffWorkbench() {
       )}
     </div>
   );
+
+  async function runGitDiff() {
+    setBusy("run");
+    setError(null);
+    try {
+      const oldC = await api.gitShow(repoPath.trim(), gitFile, refA);
+      const newC = await api.gitShow(repoPath.trim(), gitFile, refB);
+      const name = (ref: string) => (ref === "WORKDIR" ? "工作区" : ref.slice(0, 8));
+      setModeResult("git", {
+        oldText: oldC.content,
+        newText: newC.content,
+        oldLabel: `${gitFile} @ ${name(refA)}`,
+        newLabel: `${gitFile} @ ${name(refB)}`,
+      });
+    } catch (e) {
+      setModeResult("git", undefined);
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
 }
 
 /** Diff 视图：构建行模型、折叠状态与渲染 */
@@ -389,66 +450,68 @@ function DiffView({
   }
 
   return (
-    <div className="diff-body">
-      {truncated && (
-        <div className="diff-error">差异超过 20000 行，仅渲染前 20000 行。完整内容请改用专业 diff 工具。</div>
-      )}
-      <div className="diff-table">
-        {viewKind === "side" && (
-          <div className="diff-row" style={{ position: "sticky", top: 0, zIndex: 3 }}>
-            <div className="cell" style={{ background: "var(--bg-panel)", borderBottom: "1px solid var(--border)" }}>
-              <span
-                className="txt"
-                style={{
-                  fontFamily: "var(--font-ui)",
-                  color: "var(--text-secondary)",
-                  fontWeight: 600,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  fontSize: 12,
-                }}
-              >
-                旧 · {result.oldLabel}
-              </span>
-            </div>
-            <div className="cell" style={{ background: "var(--bg-panel)", borderBottom: "1px solid var(--border)" }}>
-              <span
-                className="txt"
-                style={{
-                  fontFamily: "var(--font-ui)",
-                  color: "var(--text-secondary)",
-                  fontWeight: 600,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  fontSize: 12,
-                }}
-              >
-                新 · {result.newLabel}
-              </span>
-            </div>
-          </div>
+    <>
+      <div className="diff-body">
+        {truncated && (
+          <div className="diff-error">差异超过 20000 行，仅渲染前 20000 行。完整内容请改用专业 diff 工具。</div>
         )}
-        {items.map((it, i) =>
-          it.kind === "fold" ? (
-            <div className="diff-fold-bar" key={`f${i}`}>
-              <button onClick={() => expand(it.group)}>⋯ 展开此间 {it.group.count} 行未变更内容</button>
+        <div className="diff-table">
+          {viewKind === "side" && (
+            <div className="diff-row" style={{ position: "sticky", top: 0, zIndex: 3 }}>
+              <div className="cell" style={{ background: "var(--bg-panel)", borderBottom: "1px solid var(--border)" }}>
+                <span
+                  className="txt"
+                  style={{
+                    fontFamily: "var(--font-ui)",
+                    color: "var(--text-secondary)",
+                    fontWeight: 600,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    fontSize: 12,
+                  }}
+                >
+                  旧 · {result.oldLabel}
+                </span>
+              </div>
+              <div className="cell" style={{ background: "var(--bg-panel)", borderBottom: "1px solid var(--border)" }}>
+                <span
+                  className="txt"
+                  style={{
+                    fontFamily: "var(--font-ui)",
+                    color: "var(--text-secondary)",
+                    fontWeight: 600,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    fontSize: 12,
+                  }}
+                >
+                  新 · {result.newLabel}
+                </span>
+              </div>
             </div>
-          ) : viewKind === "side" ? (
-            <SideRow key={`r${i}`} row={it.row} />
-          ) : (
-            <UnifiedRow key={`r${i}`} row={it.row} />
-          )
-        )}
+          )}
+          {items.map((it, i) =>
+            it.kind === "fold" ? (
+              <div className="diff-fold-bar" key={`f${i}`}>
+                <button onClick={() => expand(it.group)}>⋯ 展开此间 {it.group.count} 行未变更内容</button>
+              </div>
+            ) : viewKind === "side" ? (
+              <SideRow key={`r${i}`} row={it.row} />
+            ) : (
+              <UnifiedRow key={`r${i}`} row={it.row} />
+            )
+          )}
+          <div style={{ height: 24 }} />
+        </div>
       </div>
-      <div style={{ height: 40 }} />
-      <div className="diff-stats" style={{ position: "sticky", bottom: 0, borderTop: "1px solid var(--border)" }}>
+      <div className="diff-stats">
         <span className="st-add">+{stats.add} 新增</span>
         <span className="st-del">-{stats.del} 删除</span>
         <span>{stats.folds} 个折叠块</span>
         <span className="spacer" />
         <span>{result.oldLabel} ⇄ {result.newLabel}</span>
       </div>
-    </div>
+    </>
   );
 }
 

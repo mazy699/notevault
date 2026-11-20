@@ -136,31 +136,33 @@ export default function App() {
 
   return (
     <div className="app">
-      <ActivityBar />
-      {workbench === "read" ? (
-        <>
-          <TopBar />
-          <div className="app-main">
-            <Sidebar />
-            <div className="content-col">
-              <TabBar />
-              <Viewer />
-            </div>
-          </div>
-        </>
-      ) : (
-        <Suspense
-          fallback={
-            <div className="content-col">
-              <div className="diff-empty">
-                <span className="spinner" /> 正在加载对比工作台…
+      <div className="app-body">
+        <ActivityBar />
+        {workbench === "read" ? (
+          <div className="read-col">
+            <TopBar />
+            <div className="app-main">
+              <Sidebar />
+              <div className="content-col">
+                <TabBar />
+                <Viewer />
               </div>
             </div>
-          }
-        >
-          <DiffWorkbench />
-        </Suspense>
-      )}
+          </div>
+        ) : (
+          <Suspense
+            fallback={
+              <div className="content-col">
+                <div className="diff-empty">
+                  <span className="spinner" /> 正在加载对比工作台…
+                </div>
+              </div>
+            }
+          >
+            <DiffWorkbench />
+          </Suspense>
+        )}
+      </div>
       <StatusBar />
       <QuickOpen />
     </div>

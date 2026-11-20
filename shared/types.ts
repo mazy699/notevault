@@ -115,6 +115,10 @@ export const COMMANDS = [
   "fs_stat",
   "fs_snapshot",
   "fs_search",
+  "fs_read_abs",
+  "git_ls",
+  "git_log",
+  "git_show",
   "settings_get",
   "settings_set",
   "reveal_in_explorer",
@@ -122,3 +126,13 @@ export const COMMANDS = [
 ] as const;
 
 export type Command = (typeof COMMANDS)[number];
+
+/** git log 单条提交 */
+export interface GitCommit {
+  /** 完整 hash */
+  hash: string;
+  /** 提交主题（首行） */
+  subject: string;
+  author: string;
+  date: string;
+}

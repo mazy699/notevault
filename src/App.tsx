@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { lazy, Suspense, useEffect, useRef } from "react";
+import { ActivityBar } from "./components/common/ActivityBar";
 import { TopBar } from "./components/layout/TopBar";
 import { Sidebar } from "./components/layout/Sidebar";
 import { StatusBar } from "./components/layout/StatusBar";
@@ -10,9 +11,15 @@ import { useUi } from "./stores/ui";
 import { loadRecents, useTabs } from "./stores/tabs";
 import { api } from "./api/client";
 
+/** 对比工作台（含 jsdiff 引擎，懒加载，不拖累读取工作台首屏） */
+const DiffWorkbench = lazy(() =>
+  import("./components/diff/DiffWorkbench").then((m) => ({ default: m.DiffWorkbench }))
+);
+
 export default function App() {
   const init = useVault((s) => s.init);
   const autoRefresh = useUi((s) => s.autoRefresh);
+  const workbench = useUi((s) => s.workbench);
   const hasVault = useVault((s) => !!s.info);
   const lastSnapshot = useRef<Record<string, { mtimeMs: number; size: number }> | null>(null);
 
@@ -21,47 +28,44 @@ export default function App() {
     void loadRecents();
   }, [init]);
 
-  // 手动刷新（顶栏按钮 / nv-refresh-requested 事件）
+  const refreshAll = async (note?: string) => {
+    await useVault.getState().refreshTree();
+    await useTabs.getState().invalidate();
+    window.dispatchEvent(new CustomEvent("nv-flash-refresh", { detail: note ?? "已刷新" }));
+  };
+
+  // 手动刷新（顶栏按钮 / nv-refresh-requested 事件）+ 切库时重置快照基线
   useEffect(() => {
-    const doRefresh = async () => {
-      await useVault.getState().refreshTree();
-      await useTabs.getState().invalidate();
-      window.dispatchEvent(new CustomEvent("nv-flash-refresh", { detail: "已刷新" }));
-    };
-    const handler = () => void doRefresh();
-    window.addEventListener("nv-refresh-requested", handler);
-    // 切换笔记库时重置快照基线，避免首轮误判"有变化"
+    const handler = () => void refreshAll();
     const onVaultChanged = () => {
       lastSnapshot.current = null;
     };
+    window.addEventListener("nv-refresh-requested", handler);
     window.addEventListener("nv-vault-changed", onVaultChanged);
     return () => {
       window.removeEventListener("nv-refresh-requested", handler);
       window.removeEventListener("nv-vault-changed", onVaultChanged);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 自动刷新：轮询快照 diff（4s）
   useEffect(() => {
-    if (!autoRefresh || !hasVault) {
-      lastSnapshot.current = null;
-      return;
-    }
+    if (!autoRefresh || !hasVault) return;
     let stopped = false;
+    let baseline: Record<string, { mtimeMs: number; size: number }> | null = null;
     const tick = async () => {
       try {
         const snap = await api.fsSnapshot();
         if (stopped) return;
-        const prev = lastSnapshot.current;
-        lastSnapshot.current = snap.entries as Record<string, { mtimeMs: number; size: number }>;
-        if (!prev) return; // 首轮只建立基线
-        const prevKeys = Object.keys(prev);
-        const nextKeys = Object.keys(snap.entries);
-        let changed = prevKeys.length !== nextKeys.length;
+        const prev = baseline;
+        baseline = snap.entries;
+        if (!prev) return; // 首轮建立基线
+        let changed = Object.keys(prev).length !== Object.keys(snap.entries).length;
         if (!changed) {
-          for (const [path, meta] of Object.entries(snap.entries)) {
-            const p = prev[path];
-            if (!p || p.mtimeMs !== meta.mtimeMs || p.size !== meta.size) {
+          for (const [p, m] of Object.entries(snap.entries)) {
+            const q = prev[p];
+            if (!q || q.mtimeMs !== m.mtimeMs || q.size !== m.size) {
               changed = true;
               break;
             }
@@ -76,7 +80,7 @@ export default function App() {
         /* 笔记库被移除等，静默 */
       }
     };
-    void tick(); // 建立基线
+    void tick();
     const timer = window.setInterval(() => void tick(), 4000);
     return () => {
       stopped = true;
@@ -95,13 +99,20 @@ export default function App() {
         else if (ui.vaultMenuOpen) ui.setVaultMenuOpen(false);
         return;
       }
-      if (!mod) return;
+      if (!mod) {
+        if (e.key === "F5") {
+          e.preventDefault();
+          await refreshAll();
+        }
+        return;
+      }
       const key = e.key.toLowerCase();
       if (key === "p") {
         e.preventDefault();
         ui.setQuickOpen(true);
       } else if (key === "f" && e.shiftKey) {
         e.preventDefault();
+        ui.setWorkbench("read");
         ui.setSidebarTab("search");
         setTimeout(() => (document.querySelector(".search-page input") as HTMLInputElement | null)?.focus(), 60);
       } else if (key === "b") {
@@ -113,39 +124,43 @@ export default function App() {
       } else if (key === "w") {
         e.preventDefault();
         if (tabs.active) tabs.closeTab(tabs.active);
-      } else if (key === "r" || e.key === "F5") {
+      } else if (key === "r") {
         e.preventDefault();
-        await useVault.getState().refreshTree();
-        await tabs.invalidate();
-        window.dispatchEvent(new CustomEvent("nv-flash-refresh", { detail: "已刷新" }));
+        await refreshAll();
       }
     };
-    // F5 单独处理（无修饰键）
-    const onF5 = async (e: KeyboardEvent) => {
-      if (e.key !== "F5") return;
-      e.preventDefault();
-      await useVault.getState().refreshTree();
-      await useTabs.getState().invalidate();
-      window.dispatchEvent(new CustomEvent("nv-flash-refresh", { detail: "已刷新" }));
-    };
     window.addEventListener("keydown", onKey);
-    window.addEventListener("keydown", onF5);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("keydown", onF5);
-    };
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
     <div className="app">
-      <TopBar />
-      <div className="app-main">
-        <Sidebar />
-        <div className="content-col">
-          <TabBar />
-          <Viewer />
-        </div>
-      </div>
+      <ActivityBar />
+      {workbench === "read" ? (
+        <>
+          <TopBar />
+          <div className="app-main">
+            <Sidebar />
+            <div className="content-col">
+              <TabBar />
+              <Viewer />
+            </div>
+          </div>
+        </>
+      ) : (
+        <Suspense
+          fallback={
+            <div className="content-col">
+              <div className="diff-empty">
+                <span className="spinner" /> 正在加载对比工作台…
+              </div>
+            </div>
+          }
+        >
+          <DiffWorkbench />
+        </Suspense>
+      )}
       <StatusBar />
       <QuickOpen />
     </div>

@@ -41,6 +41,19 @@ export const api = {
   settingsSet: (key: string, value: string) => call<null>("settings_set", { key, value }),
   revealInExplorer: (path: string) => call<null>("reveal_in_explorer", { path }),
   openExternal: (path: string) => call<null>("open_external", { path }),
+  /** Diff：按绝对路径读取任意文本/代码文件 */
+  fsReadAbs: (path: string) => call<FileContent>("fs_read_abs", { path }),
+  /** Diff：列出 git 仓库跟踪的文件 */
+  gitLs: (repoPath: string) => call<{ files: string[] }>("git_ls", { repoPath }),
+  /** Diff：读取某文件在仓库中的提交历史（新→旧，最多 200 条） */
+  gitLog: (repoPath: string, filePath: string) =>
+    call<{ commits: Array<{ hash: string; subject: string; author: string; date: string }> }>("git_log", {
+      repoPath,
+      filePath,
+    }),
+  /** Diff：读取某文件在指定版本的内容（ref=提交 hash 或 "WORKDIR"） */
+  gitShow: (repoPath: string, filePath: string, ref: string) =>
+    call<FileContent>("git_show", { repoPath, filePath, ref }),
 };
 
 /**

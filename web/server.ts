@@ -6,7 +6,7 @@
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import os from "node:os";
 import type {
   FileContent,
@@ -297,7 +297,57 @@ function openExternal(p: string): void {
   }
 }
 
-// ---------------- API 路由（与 Tauri 命令一一对应） ----------------
+// ---------------- 任意路径文本读取（Diff 文件模式） ----------------
+function readFileAbs(abs: string): FileContent {
+  if (!fs.existsSync(abs) || fs.statSync(abs).isDirectory()) {
+    throw new Error(`文件不存在或不可访问：${abs}`);
+  }
+  const st = fs.statSync(abs);
+  const name = path.basename(abs);
+  const kind = kindOf(name);
+  if (kind === "image" || kind === "other") {
+    throw new Error(`不支持的文件类型：${name}（仅支持文本/代码类文件对比）`);
+  }
+  const truncated = st.size > MAX_READ_BYTES;
+  const buf = fs.readFileSync(abs).subarray(0, Math.min(st.size, MAX_READ_BYTES));
+  const { content, encoding } = decodeText(buf);
+  return { path: abs, name, kind, size: st.size, mtimeMs: st.mtimeMs, content, truncated, encoding };
+}
+
+// ---------------- Git 只读命令（Diff Git 模式） ----------------
+function runGitRaw(args: string[], cwd: string, bufferMode = false): { ok: true; stdout: string | Buffer } | { ok: false; error: string } {
+  const r = spawnSync("git", ["-C", cwd, "--no-pager", "-c", "core.quotepath=false", ...args], {
+    encoding: bufferMode ? "buffer" : "utf-8",
+    maxBuffer: 64 * 1024 * 1024,
+    timeout: 30000,
+  });
+  if (r.error) {
+    if ((r.error as NodeJS.ErrnoException).code === "ENOENT") {
+      return { ok: false, error: "未检测到 git 命令，请先安装 Git 并加入 PATH" };
+    }
+    return { ok: false, error: `git 执行失败：${String(r.error)}` };
+  }
+  if (r.status !== 0) {
+    const msg =
+      (String(r.stderr || r.stdout || "").trim().split("\n").pop() ?? "git 命令失败").slice(0, 300);
+    return { ok: false, error: msg };
+  }
+  return { ok: true, stdout: r.stdout ?? "" };
+}
+
+function runGit(args: string[], cwd: string): { ok: true; stdout: string } | { ok: false; error: string } {
+  const r = runGitRaw(args, cwd, false);
+  return r.ok ? { ok: true, stdout: String(r.stdout) } : r;
+}
+
+function requireAbsDir(p: string): string {
+  const abs = path.resolve(p);
+  if (!fs.existsSync(abs) || !fs.statSync(abs).isDirectory()) {
+    throw new Error(`目录不存在或不可访问：${abs}`);
+  }
+  return abs;
+}
+
 function vaultInfo(p: string | null): VaultInfo | null {
   if (!p || !fs.existsSync(p)) return null;
   const st = fs.statSync(p);
@@ -351,6 +401,60 @@ const routes: Record<string, (payload: Record<string, unknown>) => unknown> = {
   },
   fs_snapshot: () => snapshot(),
   fs_search: (p) => searchVault(String(p.query ?? ""), p.caseSensitive === true),
+  fs_read_abs: (p) => readFileAbs(path.resolve(String(p.path ?? ""))),
+  git_ls: (p) => {
+    const abs = requireAbsDir(String(p.repoPath ?? ""));
+    const r = runGit(["ls-files"], abs);
+    if (!r.ok) throw new Error(r.error);
+    return { files: r.stdout.split("\n").filter((s) => s.trim() !== "") };
+  },
+  git_log: (p) => {
+    const abs = requireAbsDir(String(p.repoPath ?? ""));
+    const file = String(p.filePath ?? "");
+    if (!file) throw new Error("缺少文件路径");
+    const r = runGit(
+      ["log", "--pretty=format:%H%x1f%h%x1f%an%x1f%aI%x1f%s", "-n", "200", "--follow", "--", file],
+      abs
+    );
+    if (!r.ok) throw new Error(r.error);
+    const commits = r.stdout
+      .split("\n")
+      .filter((s) => s.trim() !== "")
+      .map((line) => {
+        const [hash, short, author, date, subject] = line.split("\x1f");
+        return {
+          hash: hash ?? "",
+          subject: `${short ?? ""} ${subject ?? ""}`.trim(),
+          author: author ?? "",
+          date: date ?? "",
+        };
+      })
+      .filter((c) => c.hash !== "");
+    return { commits };
+  },
+  git_show: (p) => {
+    const abs = requireAbsDir(String(p.repoPath ?? ""));
+    const file = String(p.filePath ?? "");
+    const ref = String(p.ref ?? "");
+    if (!file || !ref) throw new Error("缺少文件路径或版本");
+    if (ref === "WORKDIR") {
+      return readFileAbs(path.join(abs, normalizeRelPath(file) ?? file));
+    }
+    const r = runGitRaw(["show", `${ref}:${file}`], abs, true);
+    if (!r.ok) throw new Error(r.error);
+    const bytes = Buffer.isBuffer(r.stdout) ? r.stdout : Buffer.from(r.stdout, "utf-8");
+    const { content, encoding } = decodeText(bytes.subarray(0, MAX_READ_BYTES));
+    return {
+      path: `${file}@${ref.slice(0, 10)}`,
+      name: path.basename(file),
+      kind: kindOf(path.basename(file)),
+      size: Buffer.byteLength(r.stdout, "utf-8"),
+      mtimeMs: 0,
+      content,
+      truncated: false,
+      encoding,
+    };
+  },
   settings_get: (p) => settings[String(p.key ?? "")] ?? null,
   settings_set: (p) => {
     settings[String(p.key ?? "")] = String(p.value ?? "");

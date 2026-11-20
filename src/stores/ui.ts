@@ -1,9 +1,12 @@
 import { create } from "zustand";
 
 export type SidebarTab = "files" | "search" | "recents";
+/** 工作台：读取（笔记浏览）/ 对比（Diff）——后续新功能即新增工作台 */
+export type Workbench = "read" | "diff";
 
 interface UiState {
   theme: "dark" | "light";
+  workbench: Workbench;
   sidebarWidth: number;
   sidebarCollapsed: boolean;
   sidebarTab: SidebarTab;
@@ -11,6 +14,7 @@ interface UiState {
   vaultMenuOpen: boolean;
   quickOpen: boolean;
   autoRefresh: boolean;
+  setWorkbench: (w: Workbench) => void;
   toggleTheme: () => void;
   setSidebarWidth: (w: number) => void;
   toggleSidebar: () => void;
@@ -48,6 +52,7 @@ function initialAutoRefresh(): boolean {
 
 export const useUi = create<UiState>((set, get) => ({
   theme: initialTheme(),
+  workbench: "read",
   sidebarWidth: 280,
   sidebarCollapsed: false,
   sidebarTab: "files",
@@ -55,6 +60,7 @@ export const useUi = create<UiState>((set, get) => ({
   vaultMenuOpen: false,
   quickOpen: false,
   autoRefresh: initialAutoRefresh(),
+  setWorkbench: (w) => set({ workbench: w, quickOpen: false, vaultMenuOpen: false }),
   toggleTheme: () => {
     const next = get().theme === "dark" ? "light" : "dark";
     applyTheme(next);

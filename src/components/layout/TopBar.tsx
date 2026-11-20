@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Search,
-  Moon,
-  Sun,
   RefreshCw,
   FolderOpen,
   ChevronDown,
@@ -89,14 +87,14 @@ function VaultMenu() {
 }
 
 export function TopBar() {
-  const { theme, toggleTheme, setVaultMenuOpen, setSidebarTab, setQuickOpen, autoRefresh, toggleAutoRefresh } = useUi();
+  const { setVaultMenuOpen, setSidebarTab, setQuickOpen, autoRefresh, toggleAutoRefresh } = useUi();
   const info = useVault((s) => s.info);
   const [refreshing, setRefreshing] = useState(false);
 
-  const doRefresh = async () => {
+  const doRefresh = () => {
     setRefreshing(true);
     window.dispatchEvent(new CustomEvent("nv-refresh-requested"));
-    setRefreshing(false);
+    setTimeout(() => setRefreshing(false), 600);
   };
 
   return (
@@ -139,9 +137,6 @@ export function TopBar() {
       </button>
       <button className="icon-btn" title="刷新目录与文件" onClick={() => void doRefresh()}>
         <RefreshCw size={15} className={refreshing ? "animate-spin" : ""} />
-      </button>
-      <button className="icon-btn" title={theme === "dark" ? "切换浅色主题" : "切换深色主题"} onClick={toggleTheme}>
-        {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
       </button>
     </div>
   );

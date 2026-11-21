@@ -224,3 +224,63 @@ export function expandFold(items: DiffItem[], group: FoldGroup): DiffItem[] {
 }
 
 export { diffChars };
+
+/** 文本模式双框即时高亮用的行状态 */
+export type LineStatus = "same" | "del" | "add";
+
+export interface StatusedLine {
+  text: string;
+  status: LineStatus;
+}
+
+/**
+ * 计算两侧文本每行的状态（same / del / add）。
+ * 双框即时高亮：各自按自然行序渲染并着色（不左右对齐）。
+ */
+export function lineStatuses(
+  oldText: string,
+  newText: string,
+  ignoreWhitespace = false
+): { oldLines: StatusedLine[]; newLines: StatusedLine[]; addCount: number; delCount: number } {
+  const split = (t: string) => t.replace(/\r\n/g, "\n").split("\n");
+  const oldLines = split(oldText);
+  const newLines = split(newText);
+  if (oldLines.length > 1 && oldLines[oldLines.length - 1] === "") oldLines.pop();
+  if (newLines.length > 1 && newLines[newLines.length - 1] === "") newLines.pop();
+
+  // 忽略空白时在归一化数组上计算 diff，按位置映射回原文（显示保留原文）
+  const norm = (s: string) => (ignoreWhitespace ? s.replace(/\s+/g, " ").trim() : s);
+  const oldNorm = oldLines.map(norm);
+  const newNorm = newLines.map(norm);
+  const groups = diffArrays(oldNorm, newNorm);
+  const oldOut: StatusedLine[] = [];
+  const newOut: StatusedLine[] = [];
+  let addCount = 0;
+  let delCount = 0;
+  let oi = 0;
+  let ni = 0;
+
+  for (const g of groups) {
+    if (!g.added && !g.removed) {
+      for (let k = 0; k < g.value.length; k++) {
+        oldOut.push({ text: oldLines[oi + k], status: "same" });
+        newOut.push({ text: newLines[ni + k], status: "same" });
+      }
+      oi += g.value.length;
+      ni += g.value.length;
+    } else if (g.removed) {
+      for (let k = 0; k < g.value.length; k++) {
+        oldOut.push({ text: oldLines[oi + k], status: "del" });
+        delCount++;
+      }
+      oi += g.value.length;
+    } else {
+      for (let k = 0; k < g.value.length; k++) {
+        newOut.push({ text: newLines[ni + k], status: "add" });
+        addCount++;
+      }
+      ni += g.value.length;
+    }
+  }
+  return { oldLines: oldOut, newLines: newOut, addCount, delCount };
+}

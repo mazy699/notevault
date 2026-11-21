@@ -116,6 +116,7 @@ export const COMMANDS = [
   "fs_snapshot",
   "fs_search",
   "fs_read_abs",
+  "fs_list_dir",
   "git_ls",
   "git_log",
   "git_show",

@@ -43,6 +43,8 @@ export const api = {
   openExternal: (path: string) => call<null>("open_external", { path }),
   /** Diff：按绝对路径读取任意文本/代码文件 */
   fsReadAbs: (path: string) => call<FileContent>("fs_read_abs", { path }),
+  /** Diff：列举目录（路径智能提示用） */
+  fsListDir: (dirPath: string) => call<{ entries: Array<{ name: string; dir: boolean }> }>("fs_list_dir", { dirPath }),
   /** Diff：列出 git 仓库跟踪的文件 */
   gitLs: (repoPath: string) => call<{ files: string[] }>("git_ls", { repoPath }),
   /** Diff：读取某文件在仓库中的提交历史（新→旧，最多 200 条） */

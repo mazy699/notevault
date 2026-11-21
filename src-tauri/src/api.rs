@@ -289,13 +289,47 @@ pub fn dispatch(app: &tauri::AppHandle, cmd: &str, payload: &Value) -> Result<Va
             }))
         }
 
+        "fs_list_dir" => {
+            let dir = PathBuf::from(p.get("dirPath").and_then(|v| v.as_str()).unwrap_or(""));
+            if !dir.is_dir() {
+                return Err(format!("目录不存在或不可访问：{}", dir.display()));
+            }
+            let rd = std::fs::read_dir(&dir).map_err(|e| format!("读取目录失败：{}", e))?;
+            let mut list: Vec<Value> = Vec::new();
+            for e in rd.flatten() {
+                let name = e.file_name().to_string_lossy().into_owned();
+                if name.starts_with('.') {
+                    continue;
+                }
+                let Ok(ft) = e.file_type() else { continue };
+                list.push(json!({ "name": name, "dir": ft.is_dir() }));
+                if list.len() >= 2000 {
+                    break;
+                }
+            }
+            list.sort_by(|a, b| {
+                let da = a["dir"].as_bool().unwrap_or(false);
+                let db = b["dir"].as_bool().unwrap_or(false);
+                if da != db {
+                    return if da { std::cmp::Ordering::Less } else { std::cmp::Ordering::Greater };
+                }
+                a["name"].as_str().unwrap_or("").cmp(b["name"].as_str().unwrap_or(""))
+            });
+            Ok(json!({ "entries": list }))
+        }
+
         "git_ls" => {
             let repo = PathBuf::from(p.get("repoPath").and_then(|v| v.as_str()).unwrap_or(""));
             if !repo.is_dir() {
                 return Err(format!("目录不存在或不可访问：{}", repo.display()));
             }
             let r = git_run(&["ls-files"], &repo)?;
-            let files: Vec<String> = r.lines().filter(|s| !s.trim().is_empty()).map(|s| s.to_string()).collect();
+            let files: Vec<String> = r
+                .lines()
+                .filter(|s| !s.trim().is_empty())
+                .take(5000)
+                .map(|s| s.to_string())
+                .collect();
             Ok(json!({ "files": files }))
         }
 

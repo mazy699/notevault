@@ -402,11 +402,29 @@ const routes: Record<string, (payload: Record<string, unknown>) => unknown> = {
   fs_snapshot: () => snapshot(),
   fs_search: (p) => searchVault(String(p.query ?? ""), p.caseSensitive === true),
   fs_read_abs: (p) => readFileAbs(path.resolve(String(p.path ?? ""))),
+  fs_list_dir: (p) => {
+    const abs = path.resolve(String(p.dirPath ?? ""));
+    if (!fs.existsSync(abs) || !fs.statSync(abs).isDirectory()) {
+      throw new Error(`目录不存在或不可访问：${abs}`);
+    }
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(abs, { withFileTypes: true });
+    } catch (e) {
+      throw new Error(`读取目录失败：${String(e)}`);
+    }
+    const list = entries
+      .filter((e) => !e.name.startsWith("."))
+      .slice(0, 2000)
+      .map((e) => ({ name: e.name, dir: e.isDirectory() }))
+      .sort((a, b) => (a.dir === b.dir ? a.name.localeCompare(b.name) : a.dir ? -1 : 1));
+    return { entries: list };
+  },
   git_ls: (p) => {
     const abs = requireAbsDir(String(p.repoPath ?? ""));
     const r = runGit(["ls-files"], abs);
     if (!r.ok) throw new Error(r.error);
-    return { files: r.stdout.split("\n").filter((s) => s.trim() !== "") };
+    return { files: r.stdout.split("\n").filter((s) => s.trim() !== "").slice(0, 5000) };
   },
   git_log: (p) => {
     const abs = requireAbsDir(String(p.repoPath ?? ""));

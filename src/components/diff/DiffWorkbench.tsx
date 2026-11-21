@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeftRight,
   Check,
@@ -6,11 +6,13 @@ import {
   GitCompare,
   Loader2,
   Play,
+  Search,
 } from "lucide-react";
 import {
   buildDiffRows,
   expandFold,
   foldRows,
+  lineStatuses,
   type DiffItem,
   type DiffRow,
   type FoldGroup,
@@ -19,6 +21,28 @@ import { api } from "../../api/client";
 
 type Mode = "file" | "text" | "git";
 type ViewKind = "side" | "unified";
+type SideRead = { ok: true; fc: { content: string; name: string } } | { ok: false; err: string; path: string };
+
+/** 分隔路径：目录部分 + 文件名部分（支持 / 与 \） */
+function splitPath(p: string): { dir: string; name: string } {
+  const i = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
+  if (i === -1) return { dir: "", name: p };
+  return { dir: p.slice(0, i), name: p.slice(i + 1) };
+}
+
+/** 简易模糊匹配：子序列命中（不区分大小写） */
+function fuzzyHit(text: string, query: string): boolean {
+  const t = text.toLowerCase();
+  const q = query.toLowerCase();
+  let pos = 0;
+  for (const ch of q) {
+    if (ch === "/" || ch === "\\") continue;
+    const idx = t.indexOf(ch, pos);
+    if (idx === -1) return false;
+    pos = idx + 1;
+  }
+  return true;
+}
 
 interface DiffResult {
   oldText: string;
@@ -28,6 +52,191 @@ interface DiffResult {
 }
 
 const STORAGE_KEY = "nv_diff_inputs";
+
+/** 路径智能输入框：目录列举下拉 + 文件名模糊过滤 */
+function PathCombobox({
+  value,
+  onChange,
+  placeholder,
+  onSubmit,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  onSubmit: () => void;
+}) {
+  const [entries, setEntries] = useState<Array<{ name: string; dir: boolean }> | null>(null);
+  const [browseDir, setBrowseDir] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, []);
+
+  async function browse(dir: string) {
+    setLoading(true);
+    try {
+      const r = await api.fsListDir(dir);
+      setEntries(r.entries);
+      setBrowseDir(dir);
+      setOpen(r.entries.length > 0);
+    } catch {
+      setEntries(null);
+      setOpen(false);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const { dir: curDir, name: curName } = splitPath(value);
+  const query = browseDir !== null ? value.slice(browseDir.length + 1) : curName;
+  const suggestions = useMemo(() => {
+    if (!entries || !open) return [];
+    const q = query.trim().toLowerCase();
+    const list = q ? entries.filter((e) => fuzzyHit(e.name, q)) : entries;
+    return list.slice(0, 30);
+  }, [entries, open, query]);
+
+  return (
+    <div className="pcbox" ref={boxRef}>
+      <input
+        type="text"
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setOpen(true);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            if (suggestions.length === 1) {
+              const s = suggestions[0];
+              const full = browseDir !== null ? `${browseDir}\\${s.name}` : s.name;
+              if (s.dir) {
+                onChange(full + "\\");
+                void browse(full + "\\");
+              } else {
+                onChange(full);
+                setOpen(false);
+                onSubmit();
+              }
+            } else {
+              setOpen(false);
+              onSubmit();
+            }
+          }
+        }}
+        spellCheck={false}
+      />
+      <button
+        className="icon-btn"
+        title="浏览当前目录"
+        style={{ flex: "none" }}
+        onClick={() => {
+          const d = curDir || value;
+          if (d) void browse(d);
+        }}
+      >
+        <Search size={13} />
+      </button>
+      {open && suggestions.length > 0 && (
+        <div className="pcbox-drop">
+          {browseDir && <div className="pcbox-dir">📁 {browseDir}{loading ? " …" : ""}</div>}
+          {suggestions.map((s) => (
+            <button
+              key={s.name}
+              className="pcbox-item"
+              onClick={() => {
+                const full = browseDir !== null ? `${browseDir}\\${s.name}` : s.name;
+                if (s.dir) {
+                  onChange(full + "\\");
+                  void browse(full + "\\");
+                } else {
+                  onChange(full);
+                  setOpen(false);
+                }
+              }}
+            >
+              {s.dir ? "📁 " : ""}
+              {s.name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Git 文件模糊搜索下拉：按子序列过滤跟踪文件 */
+function GitFileCombobox({
+  files,
+  value,
+  onPick,
+}: {
+  files: string[];
+  value: string;
+  onPick: (file: string) => void;
+}) {
+  const [input, setInput] = useState(value);
+  const [open, setOpen] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => setInput(value), [value]);
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, []);
+
+  const q = input.trim().toLowerCase();
+  const matches = useMemo(() => {
+    const list = q ? files.filter((f) => fuzzyHit(f, q)) : files;
+    return list.slice(0, 50);
+  }, [files, q]);
+
+  return (
+    <div className="pcbox" ref={boxRef}>
+      <input
+        type="text"
+        placeholder={`文件（模糊搜索，共 ${files.length} 个）`}
+        value={input}
+        onChange={(e) => {
+          setInput(e.target.value);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && matches.length > 0) {
+            onPick(matches[0]);
+            setOpen(false);
+          }
+        }}
+        spellCheck={false}
+      />
+      {open && (
+        <div className="pcbox-drop">
+          {matches.length === 0 ? (
+            <div className="pcbox-item" style={{ color: "var(--text-faint)" }}>无匹配文件</div>
+          ) : (
+            matches.map((f) => (
+              <button key={f} className="pcbox-item" onClick={() => { onPick(f); setInput(f); setOpen(false); }}>
+                {f}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function loadSavedInputs(): Record<string, string> {
   try {
@@ -67,6 +276,9 @@ export function DiffWorkbench() {
 
   /** 每个模式独立的结果 */
   const [results, setResults] = useState<Partial<Record<Mode, DiffResult>>>({});
+  /** 文件模式：两侧各自的读取状态（分区错误提示用） */
+  const [oldSide, setOldSide] = useState<SideRead | null>(null);
+  const [newSide, setNewSide] = useState<SideRead | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const result = results[mode];
@@ -74,36 +286,6 @@ export function DiffWorkbench() {
   useEffect(() => {
     saveInputs({ oldPath, newPath, repoPath });
   }, [oldPath, newPath, repoPath]);
-  useEffect(() => {
-    const t = setTimeout(() => saveInputs({ oldText: oldTextIn, newText: newTextIn }), 500);
-    return () => window.clearTimeout(t);
-  }, [oldTextIn, newTextIn]);
-
-  function setModeResult(m: Mode, r: DiffResult | undefined) {
-    setResults((prev) => ({ ...prev, [m]: r }));
-  }
-
-  async function runFileDiff() {
-    setBusy("file");
-    setError(null);
-    try {
-      const [a, b] = await Promise.all([
-        api.fsReadAbs(oldPath.trim()),
-        api.fsReadAbs(newPath.trim()),
-      ]);
-      setModeResult("file", {
-        oldText: a.content,
-        newText: b.content,
-        oldLabel: oldPath.trim(),
-        newLabel: newPath.trim(),
-      });
-    } catch (e) {
-      setModeResult("file", undefined);
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(null);
-    }
-  }
 
   /** 文本模式：两侧都有内容时自动对比（600ms 防抖，贴入即比） */
   useEffect(() => {
@@ -119,6 +301,44 @@ export function DiffWorkbench() {
     }, 600);
     return () => window.clearTimeout(t);
   }, [oldTextIn, newTextIn, mode]);
+
+  useEffect(() => {
+    const t = setTimeout(() => saveInputs({ oldText: oldTextIn, newText: newTextIn }), 500);
+    return () => window.clearTimeout(t);
+  }, [oldTextIn, newTextIn]);
+
+  function setModeResult(m: Mode, r: DiffResult | undefined) {
+    setResults((prev) => ({ ...prev, [m]: r }));
+  }
+
+  async function runFileDiff() {
+    setBusy("file");
+    setError(null);
+    const readSide = async (p: string): Promise<SideRead> => {
+      try {
+        return { ok: true, fc: await api.fsReadAbs(p) };
+      } catch (e) {
+        return { ok: false, err: e instanceof Error ? e.message : String(e), path: p };
+      }
+    };
+    try {
+      const [o, n] = await Promise.all([readSide(oldPath.trim()), readSide(newPath.trim())]);
+      setOldSide(o);
+      setNewSide(n);
+      if (o.ok && n.ok) {
+        setModeResult("file", {
+          oldText: o.fc.content,
+          newText: n.fc.content,
+          oldLabel: oldPath.trim(),
+          newLabel: newPath.trim(),
+        });
+      } else {
+        setModeResult("file", undefined);
+      }
+    } finally {
+      setBusy(null);
+    }
+  }
 
   function swap() {
     if (mode === "file") {
@@ -229,55 +449,55 @@ export function DiffWorkbench() {
         </label>
       </div>
 
-      {/* 输入工具条：随模式变化的输入区 */}
+      {/* 输入区：随模式变化 */}
       {error && <div className="diff-error" style={{ margin: "8px 12px" }}>{error}</div>}
 
       {mode === "file" && (
-        <div className="diff-inputs">
-          <div className="row">
-            <span className="tag">旧</span>
-            <input
-              type="text"
-              placeholder="旧文件绝对路径，如 D:\docs\report.sql"
-              value={oldPath}
-              onChange={(e) => setOldPath(e.target.value)}
-              spellCheck={false}
-            />
-            <button className="icon-btn" title="交换两侧" onClick={swap}>
-              <ArrowLeftRight size={14} />
-            </button>
-            <span className="tag">新</span>
-            <input
-              type="text"
-              placeholder="新文件绝对路径"
-              value={newPath}
-              onChange={(e) => setNewPath(e.target.value)}
-              spellCheck={false}
-              onKeyDown={(e) => e.key === "Enter" && canRun && void runFileDiff()}
-            />
-            <button
-              className="btn-ghost"
-              disabled={!canRun || busy !== null}
-              onClick={() => void runFileDiff()}
-            >
-              {busy === "file" ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
-              对比
-            </button>
+        <>
+          <div className="diff-inputs">
+            <div className="row">
+              <span className="tag">旧</span>
+              <PathCombobox value={oldPath} onChange={setOldPath} placeholder="旧文件绝对路径（去掉文件名可浏览目录）" onSubmit={() => canRun && void runFileDiff()} />
+              <button className="icon-btn" title="交换两侧" onClick={swap}>
+                <ArrowLeftRight size={14} />
+              </button>
+              <span className="tag">新</span>
+              <PathCombobox value={newPath} onChange={setNewPath} placeholder="新文件绝对路径（去掉文件名可浏览目录）" onSubmit={() => canRun && void runFileDiff()} />
+              <button
+                className="btn-ghost"
+                disabled={!canRun || busy !== null}
+                onClick={() => void runFileDiff()}
+              >
+                {busy === "file" ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
+                对比
+              </button>
+            </div>
           </div>
-        </div>
+          {(oldSide || newSide) && (
+            <div className="side-grid">
+              <SideFileCell state={oldSide} side="old" />
+              <SideFileCell state={newSide} side="new" />
+            </div>
+          )}
+        </>
       )}
 
       {mode === "text" && (
         <div className="diff-inputs">
           <div className="row" style={{ alignItems: "stretch" }}>
-            <textarea placeholder="文本 A（粘贴旧内容）" value={oldTextIn} onChange={(e) => setOldTextIn(e.target.value)} spellCheck={false} />
+            <textarea
+              placeholder="文本 A（粘贴旧内容）"
+              value={oldTextIn}
+              onChange={(e) => setOldTextIn(e.target.value)}
+              spellCheck={false}
+            />
             <button className="icon-btn" style={{ flex: "none", alignSelf: "center" }} title="交换两侧" onClick={swap}>
               <ArrowLeftRight size={14} />
             </button>
             <textarea placeholder="文本 B（粘贴新内容）" value={newTextIn} onChange={(e) => setNewTextIn(e.target.value)} spellCheck={false} />
           </div>
           <div style={{ fontSize: 11.5, color: "var(--text-faint)" }}>
-            两侧都有内容后自动对比；适合临时比较简单片段，改完即时更新。
+            两侧都有内容后自动对比（在框内直接着色显示）；适合临时比较简单片段，改完即时更新。
           </div>
         </div>
       )}
@@ -301,17 +521,11 @@ export function DiffWorkbench() {
           </div>
           <div className="row">
             <span className="tag">文件</span>
-            <select
-              className="diff-select"
+            <GitFileCombobox
+              files={gitFiles}
               value={gitFile}
-              onChange={(e) => void loadGitLog(e.target.value)}
-              disabled={gitFiles.length === 0}
-            >
-              {gitFiles.length === 0 ? <option value="">（先读取文件列表）</option> : null}
-              {gitFiles.map((f) => (
-                <option key={f} value={f}>{f}</option>
-              ))}
-            </select>
+              onPick={(f) => void loadGitLog(f)}
+            />
           </div>
           <div className="row">
             <span className="tag">版本</span>
@@ -341,9 +555,13 @@ export function DiffWorkbench() {
         </div>
       )}
 
-      {/* Diff 视图 */}
+      {/* Diff 视图（各模式自己的结果） */}
       {result ? (
-        <DiffView result={result} viewKind={viewKind} ignoreWhitespace={ignoreWhitespace} />
+        mode === "text" ? (
+          <TextPanes oldText={result.oldText} newText={result.newText} ignoreWhitespace={ignoreWhitespace} onOldChange={setOldTextIn} onNewChange={setNewTextIn} />
+        ) : (
+          <RowDiffView result={result} viewKind={viewKind} ignoreWhitespace={ignoreWhitespace} />
+        )
       ) : (
         <div className="diff-empty">
           <div>
@@ -380,8 +598,152 @@ export function DiffWorkbench() {
   }
 }
 
-/** Diff 视图：构建行模型、折叠状态与渲染 */
-function DiffView({
+/** 文本模式：左右双框即时高亮（可编辑 textarea + 背层行着色，滚动同步） */
+function TextPanes({
+  oldText,
+  newText,
+  ignoreWhitespace,
+  onOldChange,
+  onNewChange,
+}: {
+  oldText: string;
+  newText: string;
+  ignoreWhitespace: boolean;
+  onOldChange: (v: string) => void;
+  onNewChange: (v: string) => void;
+}) {
+  const { oldLines, newLines, addCount, delCount } = useMemo(
+    () => lineStatuses(oldText, newText, ignoreWhitespace),
+    [oldText, newText, ignoreWhitespace]
+  );
+  const leftTa = useRef<HTMLTextAreaElement | null>(null);
+  const rightTa = useRef<HTMLTextAreaElement | null>(null);
+  const leftBd = useRef<HTMLDivElement | null>(null);
+  const rightBd = useRef<HTMLDivElement | null>(null);
+  const syncing = useRef(false);
+
+  const syncScroll = (src: HTMLTextAreaElement) => {
+    if (syncing.current) return;
+    syncing.current = true;
+    for (const t of [leftTa.current, rightTa.current]) {
+      if (t && t !== src) {
+        t.scrollTop = src.scrollTop;
+        t.scrollLeft = src.scrollLeft;
+      }
+    }
+    for (const b of [leftBd.current, rightBd.current]) {
+      if (b) {
+        b.scrollTop = src.scrollTop;
+        b.scrollLeft = src.scrollLeft;
+      }
+    }
+    syncing.current = false;
+  };
+
+  const same = addCount === 0 && delCount === 0 && oldLines.length === newLines.length;
+
+  const pane = (
+    side: "old" | "new",
+    lines: { text: string; status: string }[],
+    taRef: React.RefObject<HTMLTextAreaElement | null>,
+    bdRef: React.RefObject<HTMLDivElement | null>,
+    value: string,
+    onChange: (v: string) => void,
+    self: "left" | "right"
+  ) => (
+    <div className="tpane">
+      <div className="tpane-backdrop" ref={bdRef} aria-hidden="true">
+        {lines.map((l, i) => (
+          <div key={i} className={`tline ${l.status === "del" ? "t-del" : l.status === "add" ? "t-add" : ""}`}>
+            <span className="tln">{i + 1}</span>
+            <span className="ttxt">{l.text === "" ? " " : l.text}</span>
+          </div>
+        ))}
+        <div className="tline"><span className="tln"> </span><span className="ttxt"> </span></div>
+      </div>
+      <textarea
+        ref={taRef}
+        className="tpane-textarea"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onScroll={(e) => syncScroll(e.currentTarget)}
+        wrap="off"
+        spellCheck={false}
+        placeholder={side === "old" ? "粘贴旧内容…" : "粘贴新内容…"}
+        aria-label={side === "old" ? "旧文本" : "新文本"}
+      />
+      {self === "left" && delCount > 0 && (
+        <span className="tpane-flag t-flag-del">−{delCount}</span>
+      )}
+      {self === "right" && addCount > 0 && (
+        <span className="tpane-flag t-flag-add">+{addCount}</span>
+      )}
+      {side === "old" ? (
+        <span className="tpane-tag">文本 A · {lines.length} 行</span>
+      ) : (
+        <span className="tpane-tag">文本 B · {lines.length} 行</span>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="text-panes-wrap">
+      <div className="text-panes-stats">
+        {same ? (
+          <span style={{ color: "var(--ok)" }}>✓ 两侧内容相同{ignoreWhitespace ? "（忽略空白）" : ""}</span>
+        ) : (
+          <>
+            <span className="st-del">−{delCount} 行删除</span>
+            <span className="st-add">+{addCount} 行新增</span>
+            <span style={{ color: "var(--text-faint)" }}>拖动滚动即时同步 · 可直接在框内编辑</span>
+          </>
+        )}
+      </div>
+      <div className="text-panes">
+        {pane("old", oldLines, leftTa, leftBd, oldText, onOldChange, "left")}
+        {pane("new", newLines, rightTa, rightBd, newText, onNewChange, "right")}
+      </div>
+    </div>
+  );
+}
+
+/** 文件模式：单侧读取结果（存在=内容预览 / 不存在=错误提示） */
+function SideFileCell({
+  state,
+  side,
+}: {
+  state: { ok: true; fc: { content: string; name: string } } | { ok: false; err: string; path: string } | null;
+  side: "old" | "new";
+}) {
+  if (!state) {
+    return (
+      <div className="side-cell">
+        <div className="side-cell-hint">{side === "old" ? "旧" : "新"}：未读取</div>
+      </div>
+    );
+  }
+  if (!state.ok) {
+    return (
+      <div className="side-cell">
+        <div className="side-cell-err">
+          <b>文件不存在</b>
+          <div className="side-cell-err-path">{state.path}</div>
+          <div>请检查路径是否正确，或从上方下拉重新选择。</div>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="side-cell">
+      <div className="side-cell-ok">
+        <b>{state.fc.name}</b> 读取成功，可执行对比。
+      </div>
+    </div>
+  );
+}
+
+/** 行模式 Diff 视图（文件 / Git 模式结果） */
+function RowDiffView({
   result,
   viewKind,
   ignoreWhitespace,
@@ -431,68 +793,46 @@ function DiffView({
   }
 
   return (
-    <>
-      <div className="diff-body">
-        {truncated && (
-          <div className="diff-error">差异超过 20000 行，仅渲染前 20000 行。完整内容请改用专业 diff 工具。</div>
-        )}
-        <div className="diff-table">
-          {viewKind === "side" && (
-            <div className="diff-row" style={{ position: "sticky", top: 0, zIndex: 3 }}>
-              <div className="cell" style={{ background: "var(--bg-panel)", borderBottom: "1px solid var(--border)" }}>
-                <span
-                  className="txt"
-                  style={{
-                    fontFamily: "var(--font-ui)",
-                    color: "var(--text-secondary)",
-                    fontWeight: 600,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    fontSize: 12,
-                  }}
-                >
-                  旧 · {result.oldLabel}
-                </span>
-              </div>
-              <div className="cell" style={{ background: "var(--bg-panel)", borderBottom: "1px solid var(--border)" }}>
-                <span
-                  className="txt"
-                  style={{
-                    fontFamily: "var(--font-ui)",
-                    color: "var(--text-secondary)",
-                    fontWeight: 600,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    fontSize: 12,
-                  }}
-                >
-                  新 · {result.newLabel}
-                </span>
-              </div>
+    <div className="diff-body">
+      {truncated && (
+        <div className="diff-error">差异超过 20000 行，仅渲染前 20000 行。完整内容请改用专业 diff 工具。</div>
+      )}
+      <div className="diff-table">
+        {viewKind === "side" && (
+          <div className="diff-row" style={{ position: "sticky", top: 0, zIndex: 3 }}>
+            <div className="cell" style={{ background: "var(--bg-panel)", borderBottom: "1px solid var(--border)" }}>
+              <span className="txt" style={{ fontFamily: "var(--font-ui)", color: "var(--text-secondary)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", fontSize: 12 }}>
+                旧 · {result.oldLabel}
+              </span>
             </div>
-          )}
-          {items.map((it, i) =>
-            it.kind === "fold" ? (
-              <div className="diff-fold-bar" key={`f${i}`}>
-                <button onClick={() => expand(it.group)}>⋯ 展开此间 {it.group.count} 行未变更内容</button>
-              </div>
-            ) : viewKind === "side" ? (
-              <SideRow key={`r${i}`} row={it.row} />
-            ) : (
-              <UnifiedRow key={`r${i}`} row={it.row} />
-            )
-          )}
-          <div style={{ height: 24 }} />
-        </div>
+            <div className="cell" style={{ background: "var(--bg-panel)", borderBottom: "1px solid var(--border)" }}>
+              <span className="txt" style={{ fontFamily: "var(--font-ui)", color: "var(--text-secondary)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", fontSize: 12 }}>
+                新 · {result.newLabel}
+              </span>
+            </div>
+          </div>
+        )}
+        {items.map((it, i) =>
+          it.kind === "fold" ? (
+            <div className="diff-fold-bar" key={`f${i}`}>
+              <button onClick={() => expand(it.group)}>⋯ 展开此间 {it.group.count} 行未变更内容</button>
+            </div>
+          ) : viewKind === "side" ? (
+            <SideRow key={`r${i}`} row={it.row} />
+          ) : (
+            <UnifiedRow key={`r${i}`} row={it.row} />
+          )
+        )}
       </div>
-      <div className="diff-stats">
+      <div style={{ height: 40 }} />
+      <div className="diff-stats" style={{ position: "sticky", bottom: 0, borderTop: "1px solid var(--border)" }}>
         <span className="st-add">+{stats.add} 新增</span>
         <span className="st-del">-{stats.del} 删除</span>
         <span>{stats.folds} 个折叠块</span>
         <span className="spacer" />
         <span>{result.oldLabel} ⇄ {result.newLabel}</span>
       </div>
-    </>
+    </div>
   );
 }
 

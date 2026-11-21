@@ -135,3 +135,42 @@ describe("foldRows", () => {
     expect(expanded.some((i) => i.kind === "fold")).toBe(false);
   });
 });
+
+import { lineStatuses } from "./diff";
+
+describe("lineStatuses（文本双框即时高亮）", () => {
+  it("相同文本：全部 same", () => {
+    const r = lineStatuses("a\nb\n", "a\nb");
+    expect(r.oldLines.every((l) => l.status === "same")).toBe(true);
+    expect(r.newLines.every((l) => l.status === "same")).toBe(true);
+    expect(r.addCount).toBe(0);
+    expect(r.delCount).toBe(0);
+  });
+
+  it("删除/新增行正确标注", () => {
+    const r = lineStatuses("keep\nold-line\n", "keep\nnew-line\nextra\n");
+    expect(r.oldLines).toEqual([
+      { text: "keep", status: "same" },
+      { text: "old-line", status: "del" },
+    ]);
+    expect(r.newLines).toEqual([
+      { text: "keep", status: "same" },
+      { text: "new-line", status: "add" },
+      { text: "extra", status: "add" },
+    ]);
+    expect(r.delCount).toBe(1);
+    expect(r.addCount).toBe(2);
+  });
+
+  it("忽略空白：空白差异视为 same", () => {
+    const r = lineStatuses("a  b\n", "a b\n", true);
+    expect(r.oldLines.every((l) => l.status === "same")).toBe(true);
+    expect(r.newLines.every((l) => l.status === "same")).toBe(true);
+  });
+
+  it("CRLF 归一化", () => {
+    const r = lineStatuses("a\r\nb\r\n", "a\nb\n");
+    expect(r.oldLines.length).toBe(2);
+    expect(r.delCount).toBe(0);
+  });
+});

@@ -5,7 +5,6 @@ import {
   FolderGit2,
   GitCompare,
   Loader2,
-  Pencil,
   Play,
 } from "lucide-react";
 import {
@@ -68,8 +67,6 @@ export function DiffWorkbench() {
 
   /** 每个模式独立的结果 */
   const [results, setResults] = useState<Partial<Record<Mode, DiffResult>>>({});
-  /** 文本模式：编辑态（显示输入框）还是结果态（显示 diff） */
-  const [textEditing, setTextEditing] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const result = results[mode];
@@ -108,9 +105,9 @@ export function DiffWorkbench() {
     }
   }
 
-  /** 文本模式：两侧都有内容时自动对比 */
+  /** 文本模式：两侧都有内容时自动对比（600ms 防抖，贴入即比） */
   useEffect(() => {
-    if (mode !== "text" || !textEditing) return;
+    if (mode !== "text") return;
     if (oldTextIn.trim() === "" || newTextIn.trim() === "") return;
     const t = setTimeout(() => {
       setModeResult("text", {
@@ -119,10 +116,9 @@ export function DiffWorkbench() {
         oldLabel: `文本 A（${oldTextIn.length} 字符）`,
         newLabel: `文本 B（${newTextIn.length} 字符）`,
       });
-      setTextEditing(false);
     }, 600);
     return () => window.clearTimeout(t);
-  }, [oldTextIn, newTextIn, mode, textEditing]);
+  }, [oldTextIn, newTextIn, mode]);
 
   function swap() {
     if (mode === "file") {
@@ -206,7 +202,6 @@ export function DiffWorkbench() {
               onClick={() => {
                 setMode(m);
                 setError(null);
-                if (m === "text") setTextEditing(!results.text);
               }}
             >
               {m === "file" ? "文件对比" : m === "text" ? "文本对比" : "Git 版本对比"}
@@ -232,13 +227,6 @@ export function DiffWorkbench() {
           />
           忽略空白
         </label>
-        {/* 文本模式结果态：重新编辑入口 */}
-        {mode === "text" && !textEditing && (
-          <button className="btn-ghost" onClick={() => setTextEditing(true)}>
-            <Pencil size={13} />
-            重新编辑
-          </button>
-        )}
       </div>
 
       {/* 输入工具条：随模式变化的输入区 */}
@@ -279,7 +267,7 @@ export function DiffWorkbench() {
         </div>
       )}
 
-      {mode === "text" && textEditing && (
+      {mode === "text" && (
         <div className="diff-inputs">
           <div className="row" style={{ alignItems: "stretch" }}>
             <textarea placeholder="文本 A（粘贴旧内容）" value={oldTextIn} onChange={(e) => setOldTextIn(e.target.value)} spellCheck={false} />
@@ -289,20 +277,8 @@ export function DiffWorkbench() {
             <textarea placeholder="文本 B（粘贴新内容）" value={newTextIn} onChange={(e) => setNewTextIn(e.target.value)} spellCheck={false} />
           </div>
           <div style={{ fontSize: 11.5, color: "var(--text-faint)" }}>
-            两侧都有内容后自动开始对比；结果全屏显示，点「重新编辑」返回修改。
+            两侧都有内容后自动对比；适合临时比较简单片段，改完即时更新。
           </div>
-        </div>
-      )}
-      {mode === "text" && !textEditing && result && (
-        <div className="diff-text-summary">
-          <span className="sum-label">{result.oldLabel}</span>
-          <ArrowLeftRight size={13} style={{ color: "var(--text-faint)" }} />
-          <span className="sum-label">{result.newLabel}</span>
-          <span style={{ flex: 1 }} />
-          <button className="btn-ghost" onClick={() => setTextEditing(true)}>
-            <Pencil size={12} />
-            重新编辑
-          </button>
         </div>
       )}
 

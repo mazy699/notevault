@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
-import { FolderOpen } from "lucide-react";
+import { FolderOpen, Moon, Sun } from "lucide-react";
+import { useUi } from "../../stores/ui";
 import { useVault } from "../../stores/vault";
 import { useTabs } from "../../stores/tabs";
 import { formatBytes, formatTime, countLines } from "../../lib/format";
 
 export function StatusBar() {
+  const { theme, toggleTheme } = useUi();
   const info = useVault((s) => s.info);
   const { active, tabs, content } = useTabs();
   const tab = tabs.find((t) => t.path === active);
@@ -40,6 +42,14 @@ export function StatusBar() {
           {fc && <span>{countLines(fc.content)} 行</span>}
         </>
       )}
+      <button
+        className="icon-btn"
+        style={{ height: 20, minWidth: 20 }}
+        title={theme === "dark" ? "切换浅色主题" : "切换深色主题"}
+        onClick={toggleTheme}
+      >
+        {theme === "dark" ? <Sun size={13} /> : <Moon size={13} />}
+      </button>
     </div>
   );
 }

@@ -9,7 +9,7 @@ import {
   Folder,
   Radar,
 } from "lucide-react";
-import { isTauri } from "../../api/client";
+import { api, isTauri } from "../../api/client";
 import { useUi } from "../../stores/ui";
 import { useVault } from "../../stores/vault";
 
@@ -18,6 +18,7 @@ function VaultMenu() {
   const { info, vaultHistory, setVault, pickVault, init } = useVault();
   const [manual, setManual] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [missing, setMissing] = useState<Record<string, boolean>>({});
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -28,6 +29,28 @@ function VaultMenu() {
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
   }, [vaultMenuOpen, setVaultMenuOpen]);
+
+  // 菜单打开时检测各历史路径是否仍然存在（用于"路径不存在"提示）
+  useEffect(() => {
+    if (!vaultMenuOpen || vaultHistory.length === 0) return;
+    let alive = true;
+    Promise.all(
+      vaultHistory.map((p: string) =>
+        api
+          .vaultInfo(p)
+          .then((info) => ({ path: p, exists: info !== null }))
+          .catch(() => ({ path: p, exists: false }))
+      )
+    ).then((checks) => {
+      if (!alive) return;
+      const map: Record<string, boolean> = {};
+      for (const c of checks) map[c.path] = c.exists;
+      setMissing(map);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [vaultMenuOpen, vaultHistory]);
 
   if (!vaultMenuOpen) return null;
 
@@ -63,13 +86,29 @@ function VaultMenu() {
         <>
           <div className="divider" />
           <div className="label">最近使用</div>
-          {vaultHistory.map((p) => (
-            <button key={p} className="item" onClick={() => void openPath(p)} title={p}>
-              <Folder size={15} style={{ color: "var(--warn)" }} />
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p}</span>
-              {info?.path === p && <span style={{ marginLeft: "auto", color: "var(--accent-text)" }}>当前</span>}
-            </button>
-          ))}
+          {vaultHistory.map((p) => {
+            const isMissing = missing[p] === false;
+            return (
+              <button
+                key={p}
+                className="item"
+                onClick={() => void openPath(p)}
+                title={p}
+                style={isMissing ? { opacity: 0.55 } : undefined}
+              >
+                <Folder size={15} style={{ color: isMissing ? "var(--err)" : "var(--warn)" }} />
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p}</span>
+                {isMissing && (
+                  <span style={{ marginLeft: "auto", color: "var(--err)", fontSize: 11, flex: "none" }}>
+                    路径不存在
+                  </span>
+                )}
+                {info?.path === p && !isMissing && (
+                  <span style={{ marginLeft: "auto", color: "var(--accent-text)", flex: "none" }}>当前</span>
+                )}
+              </button>
+            );
+          })}
         </>
       )}
       <div className="divider" />

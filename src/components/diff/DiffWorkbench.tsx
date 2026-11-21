@@ -483,23 +483,13 @@ export function DiffWorkbench() {
       )}
 
       {mode === "text" && (
-        <div className="diff-inputs">
-          <div className="row" style={{ alignItems: "stretch" }}>
-            <textarea
-              placeholder="文本 A（粘贴旧内容）"
-              value={oldTextIn}
-              onChange={(e) => setOldTextIn(e.target.value)}
-              spellCheck={false}
-            />
-            <button className="icon-btn" style={{ flex: "none", alignSelf: "center" }} title="交换两侧" onClick={swap}>
-              <ArrowLeftRight size={14} />
-            </button>
-            <textarea placeholder="文本 B（粘贴新内容）" value={newTextIn} onChange={(e) => setNewTextIn(e.target.value)} spellCheck={false} />
-          </div>
-          <div style={{ fontSize: 11.5, color: "var(--text-faint)" }}>
-            两侧都有内容后自动对比（在框内直接着色显示）；适合临时比较简单片段，改完即时更新。
-          </div>
-        </div>
+        <TextPanes
+          oldText={oldTextIn}
+          newText={newTextIn}
+          ignoreWhitespace={ignoreWhitespace}
+          onOldChange={setOldTextIn}
+          onNewChange={setNewTextIn}
+        />
       )}
 
       {mode === "git" && (
@@ -555,20 +545,24 @@ export function DiffWorkbench() {
         </div>
       )}
 
-      {/* Diff 视图（各模式自己的结果） */}
-      {result ? (
-        mode === "text" ? (
-          <TextPanes oldText={result.oldText} newText={result.newText} ignoreWhitespace={ignoreWhitespace} onOldChange={setOldTextIn} onNewChange={setNewTextIn} />
-        ) : (
-          <RowDiffView result={result} viewKind={viewKind} ignoreWhitespace={ignoreWhitespace} />
-        )
-      ) : (
+      {/* Diff 视图（文件 / Git 模式结果；文本模式的双框常驻渲染在上方） */}
+      {result && mode !== "text" ? (
+        <RowDiffView result={result} viewKind={viewKind} ignoreWhitespace={ignoreWhitespace} />
+      ) : mode === "file" ? (
         <div className="diff-empty">
           <div>
             <GitCompare size={30} style={{ marginBottom: 10, opacity: 0.5 }} />
             <div style={{ lineHeight: 2 }}>
-              <b>文件</b>：对比两个文本/代码/SQL 文件 · <b>文本</b>：粘贴两段内容自动对比 ·{" "}
-              <b>Git</b>：选仓库文件的历史版本对比
+              输入两个文件的绝对路径后对比（去掉文件名可浏览目录、模糊选文件）
+            </div>
+          </div>
+        </div>
+      ) : mode === "text" ? null : (
+        <div className="diff-empty">
+          <div>
+            <GitCompare size={30} style={{ marginBottom: 10, opacity: 0.5 }} />
+            <div style={{ lineHeight: 2 }}>
+              输入仓库路径并读取文件列表，选择文件与两个版本后对比
             </div>
           </div>
         </div>

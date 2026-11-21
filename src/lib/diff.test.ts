@@ -147,25 +147,49 @@ describe("lineStatuses（文本双框即时高亮）", () => {
     expect(r.delCount).toBe(0);
   });
 
-  it("删除/新增行正确标注", () => {
-    const r = lineStatuses("keep\nold-line\n", "keep\nnew-line\nextra\n");
+  it("修改行配对为 mod 并携带行内差异段", () => {
+    const r = lineStatuses("keep\nconst a = 1;\n", "keep\nconst a = 2;\n");
+    expect(r.oldLines[1].status).toBe("mod");
+    expect(r.newLines[1].status).toBe("mod");
+    expect(r.modCount).toBe(1);
+    expect(r.delCount).toBe(0);
+    expect(r.addCount).toBe(0);
+    // 行内段：旧行含 changed 段（旧值），新行含 changed 段（新值）
+    expect(r.oldLines[1].segs).not.toBeNull();
+    expect(r.newLines[1].segs).not.toBeNull();
+    const oldChanged = r.oldLines[1].segs!.filter((s) => s.changed).map((s) => s.text).join("");
+    const newChanged = r.newLines[1].segs!.filter((s) => s.changed).map((s) => s.text).join("");
+    expect(oldChanged).toContain("1");
+    expect(newChanged).toContain("2");
+  });
+
+  it("删除/新增行正确标注（不配对时保持 del/add）", () => {
+    const r = lineStatuses("keep\nonly-old\n", "keep\nonly-new-1\nonly-new-2\n");
     expect(r.oldLines).toEqual([
-      { text: "keep", status: "same" },
-      { text: "old-line", status: "del" },
+      { text: "keep", status: "same", segs: null },
+      { text: "only-old", status: "mod", segs: expect.anything() },
     ]);
-    expect(r.newLines).toEqual([
-      { text: "keep", status: "same" },
-      { text: "new-line", status: "add" },
-      { text: "extra", status: "add" },
-    ]);
+    expect(r.newLines[1].status).toBe("mod");
+    expect(r.newLines[2].status).toBe("add");
+    expect(r.delCount).toBe(0);
+    expect(r.addCount).toBe(1);
+    expect(r.modCount).toBe(1);
+  });
+
+  it("纯删除行保持 del", () => {
+    const r = lineStatuses("a\ngone\nb\n", "a\nb\n");
+    expect(r.oldLines[1].status).toBe("del");
+    expect(r.oldLines[1].segs).toBeNull();
+    expect(r.newLines.every((l) => l.status !== "del")).toBe(true);
     expect(r.delCount).toBe(1);
-    expect(r.addCount).toBe(2);
+    expect(r.modCount).toBe(0);
   });
 
   it("忽略空白：空白差异视为 same", () => {
     const r = lineStatuses("a  b\n", "a b\n", true);
     expect(r.oldLines.every((l) => l.status === "same")).toBe(true);
     expect(r.newLines.every((l) => l.status === "same")).toBe(true);
+    expect(r.modCount).toBe(0);
   });
 
   it("CRLF 归一化", () => {

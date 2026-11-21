@@ -614,7 +614,7 @@ function TextPanes({
   onOldChange: (v: string) => void;
   onNewChange: (v: string) => void;
 }) {
-  const { oldLines, newLines, addCount, delCount } = useMemo(
+  const { oldLines, newLines, addCount, delCount, modCount } = useMemo(
     () => lineStatuses(oldText, newText, ignoreWhitespace),
     [oldText, newText, ignoreWhitespace]
   );
@@ -642,11 +642,24 @@ function TextPanes({
     syncing.current = false;
   };
 
-  const same = addCount === 0 && delCount === 0 && oldLines.length === newLines.length;
+  const same = addCount === 0 && delCount === 0 && modCount === 0 && oldLines.length === newLines.length;
+
+  /** 背层行内容：mod 行渲染字符级差异段（改动字符加深底色），其余纯文本 */
+  const lineContent = (l: { text: string; segs: { text: string; changed: boolean }[] | null }, side: "old" | "new") => {
+    if (!l.segs) return l.text === "" ? " " : l.text;
+    if (l.text === "") return " ";
+    return l.segs.map((s, j) =>
+      s.changed ? (
+        <span key={j} className={`tseg ${side === "old" ? "tseg-del" : "tseg-add"}`}>{s.text}</span>
+      ) : (
+        <span key={j}>{s.text}</span>
+      )
+    );
+  };
 
   const pane = (
     side: "old" | "new",
-    lines: { text: string; status: string }[],
+    lines: { text: string; status: string; segs: { text: string; changed: boolean }[] | null }[],
     taRef: React.RefObject<HTMLTextAreaElement | null>,
     bdRef: React.RefObject<HTMLDivElement | null>,
     value: string,
@@ -656,9 +669,12 @@ function TextPanes({
     <div className="tpane">
       <div className="tpane-backdrop" ref={bdRef} aria-hidden="true">
         {lines.map((l, i) => (
-          <div key={i} className={`tline ${l.status === "del" ? "t-del" : l.status === "add" ? "t-add" : ""}`}>
+          <div
+            key={i}
+            className={`tline ${l.status === "del" ? "t-del" : l.status === "add" ? "t-add" : l.status === "mod" ? "t-mod" : ""}`}
+          >
             <span className="tln">{i + 1}</span>
-            <span className="ttxt">{l.text === "" ? " " : l.text}</span>
+            <span className="ttxt">{lineContent(l, side)}</span>
           </div>
         ))}
         <div className="tline"><span className="tln"> </span><span className="ttxt"> </span></div>
@@ -695,8 +711,9 @@ function TextPanes({
           <span style={{ color: "var(--ok)" }}>✓ 两侧内容相同{ignoreWhitespace ? "（忽略空白）" : ""}</span>
         ) : (
           <>
-            <span className="st-del">−{delCount} 行删除</span>
-            <span className="st-add">+{addCount} 行新增</span>
+            {delCount > 0 && <span className="st-del">−{delCount} 行删除</span>}
+            {addCount > 0 && <span className="st-add">+{addCount} 行新增</span>}
+            {modCount > 0 && <span className="st-mod">≈{modCount} 行修改</span>}
             <span style={{ color: "var(--text-faint)" }}>拖动滚动即时同步 · 可直接在框内编辑</span>
           </>
         )}
@@ -755,7 +772,7 @@ function RowDiffView({
   ignoreWhitespace: boolean;
 }) {
   const [items, setItems] = useState<DiffItem[]>([]);
-  const [stats, setStats] = useState<{ add: number; del: number; folds: number }>({ add: 0, del: 0, folds: 0 });
+  const [stats, setStats] = useState<{ add: number; del: number; mod: number; folds: number }>({ add: 0, del: 0, mod: 0, folds: 0 });
   const [truncated, setTruncated] = useState(false);
   const [same, setSame] = useState(false);
 
@@ -772,13 +789,15 @@ function RowDiffView({
     setItems(it);
     let add = 0;
     let del = 0;
+    let mod = 0;
     let folds = 0;
     for (const x of it) {
       if (x.kind === "fold") folds++;
       else if (x.row.type === "add") add++;
       else if (x.row.type === "del") del++;
+      else if (x.row.type === "replace") mod++;
     }
-    setStats({ add, del, folds });
+    setStats({ add, del, mod, folds });
   }, [result, ignoreWhitespace]);
 
   const expand = (group: FoldGroup) => setItems((cur) => expandFold(cur, group));
@@ -828,8 +847,9 @@ function RowDiffView({
       </div>
       <div style={{ height: 40 }} />
       <div className="diff-stats" style={{ position: "sticky", bottom: 0, borderTop: "1px solid var(--border)" }}>
-        <span className="st-add">+{stats.add} 新增</span>
-        <span className="st-del">-{stats.del} 删除</span>
+        {stats.add > 0 && <span className="st-add">+{stats.add} 新增</span>}
+        {stats.del > 0 && <span className="st-del">-{stats.del} 删除</span>}
+        {stats.mod > 0 && <span className="st-mod">≈{stats.mod} 修改</span>}
         <span>{stats.folds} 个折叠块</span>
         <span className="spacer" />
         <span>{result.oldLabel} ⇄ {result.newLabel}</span>
@@ -857,7 +877,7 @@ function SideRow({ row }: { row: DiffRow }) {
   const oldEmpty = row.oldNo === null;
   const newEmpty = row.newNo === null;
   return (
-    <div className="diff-row">
+    <div className={`diff-row ${row.type}`}>
       <div className={`cell old${row.type === "del" || row.type === "replace" ? " del-side" : ""}${oldEmpty ? " add" : ""}`}>
         <span className="ln">{row.oldNo ?? ""}</span>
         <span className="txt">
@@ -878,13 +898,13 @@ function UnifiedRow({ row }: { row: DiffRow }) {
   if (row.type === "replace") {
     return (
       <>
-        <div className="diff-row del">
+        <div className="diff-row mod">
           <div className="cell" style={{ width: "100%", minWidth: 0 }}>
             <span className="ln">{row.oldNo ?? ""}</span>
             <span className="txt">- <SegText segs={row.oldSegs} text={row.oldText} /></span>
           </div>
         </div>
-        <div className="diff-row add">
+        <div className="diff-row mod">
           <div className="cell" style={{ width: "100%", minWidth: 0 }}>
             <span className="ln">{row.newNo ?? ""}</span>
             <span className="txt">+ <SegText segs={row.newSegs} text={row.newText} /></span>

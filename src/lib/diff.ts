@@ -70,6 +70,7 @@ export function buildDiffRows(oldText: string, newText: string, opts: BuildOptio
   truncated: boolean;
   addCount: number;
   delCount: number;
+  modCount: number;
 } {
   const oldLines = oldText.replace(/\r\n/g, "\n").split("\n");
   const newLines = newText.replace(/\r\n/g, "\n").split("\n");
@@ -86,6 +87,7 @@ export function buildDiffRows(oldText: string, newText: string, opts: BuildOptio
   let newNo = 0;
   let addCount = 0;
   let delCount = 0;
+  let modCount = 0;
   let truncated = false;
 
   const push = (row: Omit<DiffRow, "oldSegs" | "newSegs"> & { oldSegs?: InlineSeg[] | null; newSegs?: InlineSeg[] | null }) => {
@@ -150,6 +152,7 @@ export function buildDiffRows(oldText: string, newText: string, opts: BuildOptio
           });
           if (type === "add") addCount++;
           else if (type === "del") delCount++;
+          else if (type === "replace") modCount++;
         }
         g++; // 跳过已消费的 added 组
         continue;
@@ -170,7 +173,7 @@ export function buildDiffRows(oldText: string, newText: string, opts: BuildOptio
     }
   }
 
-  return { rows, truncated, addCount, delCount };
+  return { rows, truncated, addCount, delCount, modCount };
 }
 
 /** 折叠：连续未变更行超过阈值时折叠为一条横条（保留上下文） */
@@ -226,22 +229,25 @@ export function expandFold(items: DiffItem[], group: FoldGroup): DiffItem[] {
 export { diffChars };
 
 /** 文本模式双框即时高亮用的行状态 */
-export type LineStatus = "same" | "del" | "add";
+export type LineStatus = "same" | "del" | "add" | "mod";
 
 export interface StatusedLine {
   text: string;
   status: LineStatus;
+  /** 行内字符差异段（仅 mod 行；null 表示无） */
+  segs: InlineSeg[] | null;
 }
 
 /**
- * 计算两侧文本每行的状态（same / del / add）。
+ * 计算两侧文本每行的状态（same / del / add / mod）。
  * 双框即时高亮：各自按自然行序渲染并着色（不左右对齐）。
+ * 相邻删除+新增组按位置配对为 mod（修改行），并计算行内字符差异段。
  */
 export function lineStatuses(
   oldText: string,
   newText: string,
   ignoreWhitespace = false
-): { oldLines: StatusedLine[]; newLines: StatusedLine[]; addCount: number; delCount: number } {
+): { oldLines: StatusedLine[]; newLines: StatusedLine[]; addCount: number; delCount: number; modCount: number } {
   const split = (t: string) => t.replace(/\r\n/g, "\n").split("\n");
   const oldLines = split(oldText);
   const newLines = split(newText);
@@ -257,30 +263,71 @@ export function lineStatuses(
   const newOut: StatusedLine[] = [];
   let addCount = 0;
   let delCount = 0;
+  let modCount = 0;
   let oi = 0;
   let ni = 0;
+  let inlineDone = 0;
 
-  for (const g of groups) {
+  for (let gi = 0; gi < groups.length; gi++) {
+    const g = groups[gi];
     if (!g.added && !g.removed) {
       for (let k = 0; k < g.value.length; k++) {
-        oldOut.push({ text: oldLines[oi + k], status: "same" });
-        newOut.push({ text: newLines[ni + k], status: "same" });
+        oldOut.push({ text: oldLines[oi + k], status: "same", segs: null });
+        newOut.push({ text: newLines[ni + k], status: "same", segs: null });
       }
       oi += g.value.length;
       ni += g.value.length;
-    } else if (g.removed) {
+      continue;
+    }
+    if (g.removed) {
+      const next = groups[gi + 1];
+      if (next && next.added) {
+        // 删除+新增相邻 → 按位置配对为修改行（mod），行内字符差异段
+        const max = Math.max(g.value.length, next.value.length);
+        for (let k = 0; k < max; k++) {
+          const hasO = k < g.value.length;
+          const hasN = k < next.value.length;
+          const o = hasO ? oldLines[oi + k] : "";
+          const n = hasN ? newLines[ni + k] : "";
+          const paired = hasO && hasN;
+          const changed = paired && norm(o) !== norm(n);
+          let oldSegs: InlineSeg[] | null = null;
+          let newSegs: InlineSeg[] | null = null;
+          if (changed && inlineDone < INLINE_LIMIT && o.length <= INLINE_MAX_LINE && n.length <= INLINE_MAX_LINE) {
+            const segs = inlineSegs(o, n);
+            oldSegs = segs.oldSegs;
+            newSegs = segs.newSegs;
+            inlineDone++;
+          }
+          if (hasO) {
+            oldOut.push({ text: o, status: paired ? (changed ? "mod" : "same") : "del", segs: oldSegs });
+            if (!paired) delCount++;
+            else if (changed) modCount++;
+          }
+          if (hasN) {
+            newOut.push({ text: n, status: paired ? (changed ? "mod" : "same") : "add", segs: newSegs });
+            if (!paired) addCount++;
+          }
+        }
+        oi += g.value.length;
+        ni += next.value.length;
+        gi++; // 跳过已消费的 added 组
+        continue;
+      }
+      // 纯删除
       for (let k = 0; k < g.value.length; k++) {
-        oldOut.push({ text: oldLines[oi + k], status: "del" });
+        oldOut.push({ text: oldLines[oi + k], status: "del", segs: null });
         delCount++;
       }
       oi += g.value.length;
-    } else {
-      for (let k = 0; k < g.value.length; k++) {
-        newOut.push({ text: newLines[ni + k], status: "add" });
-        addCount++;
-      }
-      ni += g.value.length;
+      continue;
     }
+    // 纯新增
+    for (let k = 0; k < g.value.length; k++) {
+      newOut.push({ text: newLines[ni + k], status: "add", segs: null });
+      addCount++;
+    }
+    ni += g.value.length;
   }
-  return { oldLines: oldOut, newLines: newOut, addCount, delCount };
+  return { oldLines: oldOut, newLines: newOut, addCount, delCount, modCount };
 }

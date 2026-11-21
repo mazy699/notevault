@@ -1522,6 +1522,10 @@ html.dark .html-frame {
 }
 .diff-stats .st-add { color: var(--ok); font-weight: 600; }
 .diff-stats .st-del { color: var(--err); font-weight: 600; }
+.diff-stats .st-mod,
+.text-panes-stats .st-mod { color: var(--warn); font-weight: 600; }
+.text-panes-stats .st-add { color: var(--ok); font-weight: 600; }
+.text-panes-stats .st-del { color: var(--err); font-weight: 600; }
 .diff-stats .spacer { flex: 1; }
 
 .diff-inputs {
@@ -1645,10 +1649,12 @@ html.dark .html-frame {
   min-width: 0;
 }
 .diff-row.equal .cell { background: var(--bg); }
-.diff-row.del .cell.old,
-.diff-row.replace .cell.old.del-side { background: color-mix(in srgb, var(--err) 12%, var(--bg)); }
-.diff-row.add .cell.new,
-.diff-row.replace .cell.new.add-side { background: color-mix(in srgb, var(--ok) 12%, var(--bg)); }
+.diff-row.del .cell.old { background: color-mix(in srgb, var(--err) 12%, var(--bg)); }
+.diff-row.add .cell.new { background: color-mix(in srgb, var(--ok) 12%, var(--bg)); }
+/* 修改行（配对的删除+新增）：琥珀底 = "这一行被修改"，行内改动字符仍以红/绿加深 */
+.diff-row.replace .cell.old.del-side,
+.diff-row.replace .cell.new.add-side,
+.diff-row.mod .cell { background: color-mix(in srgb, var(--warn) 16%, var(--bg)); }
 .diff-row .cell .seg-changed {
   background: color-mix(in srgb, var(--err) 30%, transparent);
   border-radius: 3px;
@@ -1810,11 +1816,26 @@ html.dark .html-frame {
 .tpane .tline.t-add {
   background: color-mix(in srgb, var(--ok) 16%, var(--bg));
 }
+/* 修改行：琥珀底 + 行内改动字符红/绿加深（字符段在 .ttxt 内渲染） */
+.tpane .tline.t-mod {
+  background: color-mix(in srgb, var(--warn) 20%, var(--bg));
+}
 .tpane .tline.t-del .ttxt {
   color: color-mix(in srgb, var(--err) 70%, var(--text));
 }
 .tpane .tline.t-add .ttxt {
   color: color-mix(in srgb, var(--ok) 70%, var(--text));
+}
+.tpane .tline.t-mod .ttxt {
+  color: color-mix(in srgb, var(--warn) 60%, var(--text));
+}
+.tpane .ttxt .tseg-del {
+  background: color-mix(in srgb, var(--err) 42%, var(--bg));
+  border-radius: 2px;
+}
+.tpane .ttxt .tseg-add {
+  background: color-mix(in srgb, var(--ok) 42%, var(--bg));
+  border-radius: 2px;
 }
 .tpane-textarea {
   position: absolute;

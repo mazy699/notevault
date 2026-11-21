@@ -1,17 +1,43 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  Search,
-  RefreshCw,
-  FolderOpen,
+  ArrowDownToLine,
   ChevronDown,
-  FolderPlus,
-  Sparkles,
   Folder,
+  FolderOpen,
+  FolderPlus,
   Radar,
+  RefreshCw,
+  Search,
+  Sparkles,
 } from "lucide-react";
 import { api, isTauri } from "../../api/client";
 import { useUi } from "../../stores/ui";
 import { useVault } from "../../stores/vault";
+
+/** PWA 安装（Web 模式）：捕获浏览器的安装事件 */
+function usePwaInstall() {
+  const [installReady, setInstallReady] = useState(false);
+  useEffect(() => {
+    if (isTauri()) return;
+    const onAvail = () => setInstallReady(true);
+    window.addEventListener("nv-install-available", onAvail);
+    const timer = setTimeout(() => {
+      const p = (window as unknown as { __installPromptEvent?: unknown }).__installPromptEvent;
+      if (p) setInstallReady(true);
+    }, 1500);
+    return () => window.clearTimeout(timer);
+  }, []);
+  const installApp = async () => {
+    const promptEvent = (
+      window as unknown as { __installPromptEvent?: { prompt: () => Promise<void> } }
+    ).__installPromptEvent;
+    if (promptEvent) {
+      await promptEvent.prompt();
+      setInstallReady(false);
+    }
+  };
+  return { installReady, installApp };
+}
 
 function VaultMenu() {
   const { vaultMenuOpen, setVaultMenuOpen } = useUi();
@@ -21,15 +47,6 @@ function VaultMenu() {
   const [missing, setMissing] = useState<Record<string, boolean>>({});
   const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!vaultMenuOpen) return;
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setVaultMenuOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [vaultMenuOpen, setVaultMenuOpen]);
-
   // 菜单打开时检测各历史路径是否仍然存在（用于"路径不存在"提示）
   useEffect(() => {
     if (!vaultMenuOpen || vaultHistory.length === 0) return;
@@ -38,7 +55,7 @@ function VaultMenu() {
       vaultHistory.map((p: string) =>
         api
           .vaultInfo(p)
-          .then((info) => ({ path: p, exists: info !== null }))
+          .then((v) => ({ path: p, exists: v !== null }))
           .catch(() => ({ path: p, exists: false }))
       )
     ).then((checks) => {
@@ -119,7 +136,7 @@ function VaultMenu() {
           void init();
         }}
       >
-        <RefreshCw size={15} /> 刷新列表与当前库
+        <FolderPlus size={15} /> 刷新列表
       </button>
     </div>
   );
@@ -129,6 +146,7 @@ export function TopBar() {
   const { setVaultMenuOpen, setSidebarTab, setQuickOpen, autoRefresh, toggleAutoRefresh } = useUi();
   const info = useVault((s) => s.info);
   const [refreshing, setRefreshing] = useState(false);
+  const { installReady, installApp } = usePwaInstall();
 
   const doRefresh = () => {
     setRefreshing(true);
@@ -177,6 +195,16 @@ export function TopBar() {
       <button className="icon-btn" title="刷新目录与文件" onClick={() => void doRefresh()}>
         <RefreshCw size={15} className={refreshing ? "animate-spin" : ""} />
       </button>
+      {installReady && !isTauri() && (
+        <button
+          className="icon-btn labeled"
+          title="把 WebUI 安装为本地应用（独立窗口，无需保留网页）"
+          onClick={() => void installApp()}
+        >
+          <ArrowDownToLine size={15} />
+          安装应用
+        </button>
+      )}
     </div>
   );
 }

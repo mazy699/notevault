@@ -1,7 +1,7 @@
 {
   "name": "notevault",
   "productName": "NoteVault",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "NoteVault - AI 文档笔记查看器（Markdown / Mermaid / HTML）",
   "author": "mazho",
   "license": "MIT",

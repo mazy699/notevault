@@ -70,6 +70,7 @@ function PathCombobox({
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
+  const lastBrowseRef = useRef<string | null>(null);
 
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
@@ -80,6 +81,7 @@ function PathCombobox({
   }, []);
 
   async function browse(dir: string) {
+    lastBrowseRef.current = dir;
     setLoading(true);
     try {
       const r = await api.fsListDir(dir);
@@ -110,8 +112,14 @@ function PathCombobox({
         placeholder={placeholder}
         value={value}
         onChange={(e) => {
-          onChange(e.target.value);
+          const v = e.target.value;
+          onChange(v);
           setOpen(true);
+          // 输入以分隔符结尾（目录前缀）时自动浏览该目录——输入即提示
+          if (/[\\/]$/.test(v)) {
+            const d = v.slice(0, -1);
+            if (d && lastBrowseRef.current !== d) void browse(d);
+          }
         }}
         onKeyDown={(e) => {
           if (e.key === "Enter") {

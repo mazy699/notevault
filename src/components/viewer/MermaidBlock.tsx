@@ -17,9 +17,49 @@ export function MermaidBlock({ code, dark }: { code: string; dark: boolean }) {
     (async () => {
       try {
         const mermaid = (await import("mermaid")).default;
+        // 图表配色微调：饼图两主题统一亮色盘（dark 默认扇区过暗、neutral 默认全灰），
+        // 文字随主题；深色甘特图任务条默认发白、文字对比不足——覆盖为品牌色系
+        const themeVariables: Record<string, string> = {
+          pie1: "#7c6fd6",
+          pie2: "#e0a458",
+          pie3: "#54b3b6",
+          pie4: "#d67ba8",
+          pie5: "#8fbf6f",
+          pie6: "#c993d6",
+          pie7: "#6b9be0",
+          pie8: "#e08b6b",
+          pie9: "#a3d66b",
+          pie10: "#bd6bd6",
+          pie11: "#d6c26b",
+          pie12: "#6bd0d6",
+          pieSectionTextColor: "#12131a",
+          pieTitleTextColor: dark ? "#e6e6f0" : "#1a1a24",
+          pieLegendTextColor: dark ? "#c9cad4" : "#3a3b46",
+          pieStrokeColor: dark ? "#12131a" : "#ffffff",
+          ...(dark
+            ? {
+                sectionBkgColor: "rgba(124, 111, 214, 0.08)",
+                altSectionBkgColor: "rgba(255, 255, 255, 0.03)",
+                gridColor: "#4a4b55",
+                todayLineColor: "#e0a458",
+                taskBkgColor: "#7c6fd6",
+                taskBorderColor: "#9d92e6",
+                taskTextColor: "#12131a",
+                taskTextDarkColor: "#e6e6f0",
+                taskTextOutsideColor: "#c9cad4",
+                activeTaskBkgColor: "#e0a458",
+                activeTaskBorderColor: "#f0c58a",
+                doneTaskBkgColor: "#4a4b55",
+                doneTaskBorderColor: "#6a6b75",
+                critBkgColor: "#d67ba8",
+                critBorderColor: "#e79cc0",
+              }
+            : {}),
+        };
         mermaid.initialize({
           startOnLoad: false,
           theme: dark ? "dark" : "neutral",
+          themeVariables,
           securityLevel: "strict",
           fontFamily: '"Segoe UI", "Microsoft YaHei", system-ui, sans-serif',
           flowchart: { htmlLabels: true, useMaxWidth: true },

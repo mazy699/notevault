@@ -1,0 +1,23 @@
+{
+  "name": "NoteVault · 笔记查看器",
+  "short_name": "NoteVault",
+  "description": "统一查看 AI 开发过程产出的 Markdown（含 Mermaid 图、公式）与 HTML 文档的本地工具",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1e1f22",
+  "theme_color": "#6d5bd0",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

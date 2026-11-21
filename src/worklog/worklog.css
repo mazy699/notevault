@@ -1,12 +1,10 @@
 
 
-html,
-body,
-#root {
+.wl-root {
   height: 100%;
 }
 
-body {
+.wl-root {
   background-color: #f8fafc;
   color: #1e293b;
   font-family: "Segoe UI", "Microsoft YaHei", system-ui, -apple-system, sans-serif;

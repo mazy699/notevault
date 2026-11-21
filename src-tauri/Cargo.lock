@@ -2218,7 +2218,7 @@ dependencies = [
 
 [[package]]
 name = "notevault"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "aes-gcm",
  "base64 0.22.1",

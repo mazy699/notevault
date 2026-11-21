@@ -45,14 +45,26 @@ function normalizeEntry(raw: Record<string, unknown>): PwEntry | null {
     const n = typeof v === "number" ? v : typeof v === "string" ? Date.parse(v) : NaN;
     return Number.isFinite(n) && n > 0 ? n : now;
   };
+  const createdAt = toTime(raw.createdAt);
+  // 历史密码：兼容旧格式（仅有 changedAt）；新格式记录 startedAt/endedAt 完整区间。
+  // 缺失 startedAt 时按时间链推导：首条 = 条目创建时间，后续 = 前一条的结束时间。
   let history: PwHistory[] = [];
   if (Array.isArray(raw.history)) {
+    let prevEnd = createdAt;
     history = raw.history
       .filter((h) => h && typeof h === "object" && typeof (h as Record<string, unknown>).password === "string")
-      .map((h) => ({
-        password: (h as Record<string, unknown>).password as string,
-        changedAt: toTime((h as Record<string, unknown>).changedAt),
-      }));
+      .map((h) => {
+        const rec = h as Record<string, unknown>;
+        const endedAt = toTime(rec.endedAt ?? rec.changedAt);
+        const rawStart = rec.startedAt;
+        const startedAt = rawStart !== undefined ? toTime(rawStart) : prevEnd;
+        prevEnd = endedAt;
+        return {
+          password: rec.password as string,
+          startedAt: Math.min(startedAt, endedAt),
+          endedAt,
+        };
+      });
   }
   return {
     id: typeof raw.id === "string" && raw.id ? raw.id : crypto.randomUUID(),
@@ -63,7 +75,7 @@ function normalizeEntry(raw: Record<string, unknown>): PwEntry | null {
     url: typeof raw.url === "string" ? raw.url : "",
     notes: typeof raw.notes === "string" ? raw.notes : "",
     updatedAt: toTime(raw.updatedAt),
-    createdAt: toTime(raw.createdAt),
+    createdAt,
     history,
   };
 }
@@ -181,16 +193,13 @@ function parseCsvImport(text: string): PwEntry[] | null {
       const i = idx(name);
       return i >= 0 && i < cells.length ? cells[i] : "";
     };
-    let history: PwHistory[] = [];
+    // history 列是 JSON 数组：交给 normalizeEntry 统一规范化（含旧格式时间推导）
+    let history: unknown[] = [];
     const hRaw = get("history");
     if (hRaw) {
       try {
         const parsed = JSON.parse(hRaw);
-        if (Array.isArray(parsed)) {
-          history = parsed
-            .filter((h) => h && typeof h === "object" && typeof (h as Record<string, unknown>).password === "string")
-            .map((h) => ({ password: (h as Record<string, unknown>).password as string, changedAt: toTime((h as Record<string, unknown>).changedAt) }));
-        }
+        if (Array.isArray(parsed)) history = parsed;
       } catch {
         /* history 列非 JSON：忽略 */
       }
@@ -209,11 +218,6 @@ function parseCsvImport(text: string): PwEntry[] | null {
     if (e) out.push(e);
   }
   return out;
-}
-
-function toTime(v: unknown): number {
-  const n = typeof v === "number" ? v : typeof v === "string" ? Date.parse(v) : NaN;
-  return Number.isFinite(n) && n > 0 ? n : Date.now();
 }
 
 // ---------------- Markdown ----------------
@@ -247,7 +251,7 @@ export function buildMd(entries: PwEntry[], includeHistory = true): string {
       if (includeHistory && e.history.length > 0) {
         L.push(`- 历史密码（${e.history.length}）：`);
         e.history.forEach((h, i) => {
-          L.push(`  ${i + 1}. \`${h.password}\`（至 ${fmtTime(h.changedAt)}）`);
+          L.push(`  ${i + 1}. \`${h.password}\`（${fmtTime(h.startedAt)} ~ ${fmtTime(h.endedAt)}）`);
         });
       }
       L.push("");

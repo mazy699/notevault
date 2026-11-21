@@ -13,7 +13,10 @@ function sampleEntries(): PwEntry[] {
       notes: "每季度轮换",
       updatedAt: Date.parse("2026-11-01T10:00:00"),
       createdAt: Date.parse("2026-01-01T10:00:00"),
-      history: [{ password: "Old-Pass-0", changedAt: Date.parse("2026-11-01T10:00:00") }],
+      history: [
+        { password: "Old-Pass-0", startedAt: Date.parse("2026-01-01T10:00:00"), endedAt: Date.parse("2026-08-01T10:00:00") },
+        { password: "Old-Pass-1", startedAt: Date.parse("2026-08-01T10:00:00"), endedAt: Date.parse("2026-11-01T10:00:00") },
+      ],
     }),
     newEntry({
       title: "OA 系统",
@@ -31,10 +34,12 @@ describe("密码库导出", () => {
     const back = JSON.parse(text);
     expect(back.format).toBe("notevault-pw-v1");
     expect(back.entries.length).toBe(2);
-    expect(back.entries[0].history.length).toBe(1);
+    expect(back.entries[0].history.length).toBe(2);
+    expect(back.entries[0].history[1].startedAt).toBe(Date.parse("2026-08-01T10:00:00"));
+    expect(back.entries[0].history[1].endedAt).toBe(Date.parse("2026-11-01T10:00:00"));
   });
 
-  it("CSV：转义引号/逗号/换行，历史列 JSON", () => {
+  it("CSV：转义引号/逗号/换行，历史列 JSON 含完整区间", () => {
     const entries = sampleEntries();
     entries[0].notes = '备注,含"引号"\n第二行';
     const csv = buildCsv(entries);
@@ -42,16 +47,20 @@ describe("密码库导出", () => {
     expect(rows.length).toBe(3);
     expect(rows[0][0]).toBe("title");
     expect(rows[1][5]).toBe('备注,含"引号"\n第二行');
-    expect(JSON.parse(rows[1][8]).length).toBe(1);
+    const hist = JSON.parse(rows[1][8]);
+    expect(hist.length).toBe(2);
+    expect(hist[0].startedAt).toBeTruthy();
+    expect(hist[0].endedAt).toBeTruthy();
     expect(rows[2][1]).toBe("工号系统");
   });
 
-  it("Markdown：按分类分组、含历史列表", () => {
+  it("Markdown：按分类分组、历史含开始~结束区间", () => {
     const md = buildMd(sampleEntries());
     expect(md).toContain("## 邮箱（1）");
     expect(md).toContain("## 工号系统（1）");
     expect(md).toContain("`P@ss-W0rd-1`");
-    expect(md).toContain("历史密码（1）");
+    expect(md).toContain("历史密码（2）");
+    expect(md).toMatch(/Old-Pass-0`（\d{4}-\d{2}-\d{2} \d{2}:\d{2} ~ \d{4}-\d{2}-\d{2} \d{2}:\d{2}）/);
     expect(md).toContain("阅后即焚");
   });
 });
@@ -68,13 +77,41 @@ describe("密码库导入", () => {
     expect(arr.entries.length).toBe(1);
   });
 
-  it("CSV 表头映射 + 历史 JSON 列", () => {
+  it("旧格式历史（仅 changedAt）导入时自动推导 startedAt", () => {
+    const createdAt = "2026-01-01T00:00:00";
+    const db = {
+      format: "notevault-pw-v1",
+      entries: [
+        {
+          title: "L",
+          account: "l",
+          password: "cur",
+          createdAt,
+          updatedAt: "2026-05-01T00:00:00",
+          history: [
+            { password: "h0", changedAt: "2026-03-01T00:00:00" },
+            { password: "h1", changedAt: "2026-05-01T00:00:00" },
+          ],
+        },
+      ],
+    };
+    const r = parseImportText(JSON.stringify(db), "old.json");
+    const h = r.entries[0].history;
+    // 首条 startedAt = 条目创建时间；后续 startedAt = 前一条 endedAt
+    expect(h[0].startedAt).toBe(Date.parse(createdAt));
+    expect(h[0].endedAt).toBe(Date.parse("2026-03-01T00:00:00"));
+    expect(h[1].startedAt).toBe(Date.parse("2026-03-01T00:00:00"));
+    expect(h[1].endedAt).toBe(Date.parse("2026-05-01T00:00:00"));
+  });
+
+  it("CSV 表头映射 + 历史 JSON 列（完整区间）", () => {
     const csv = buildCsv(sampleEntries());
     const r = parseImportText(csv, "pw.csv");
     expect(r.format).toBe("csv");
     expect(r.entries.length).toBe(2);
     expect(r.entries[0].password).toBe("P@ss-W0rd-1");
-    expect(r.entries[0].history.length).toBe(1);
+    expect(r.entries[0].history.length).toBe(2);
+    expect(r.entries[0].history[1].endedAt).toBe(Date.parse("2026-11-01T10:00:00"));
   });
 
   it("非法输入抛错", () => {

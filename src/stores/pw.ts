@@ -114,11 +114,15 @@ export const usePw = create<PwState>((set, get) => ({
     const entry = get().db.entries.find((x) => x.id === id);
     if (!entry) return;
     if (!newPassword) return;
+    const now = Date.now();
     const updated: PwEntry = {
       ...entry,
       password: newPassword,
-      updatedAt: Date.now(),
-      history: entry.password ? [...entry.history, { password: entry.password, changedAt: Date.now() }] : entry.history,
+      updatedAt: now,
+      // 旧密码入史：开始时间 = 当前密码启用时间（updatedAt 仅在换密时更新），结束 = 现在
+      history: entry.password
+        ? [...entry.history, { password: entry.password, startedAt: entry.updatedAt, endedAt: now }]
+        : entry.history,
     };
     await get().updateEntry(updated);
   },

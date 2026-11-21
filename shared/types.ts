@@ -131,11 +131,13 @@ export const COMMANDS = [
 
 export type Command = (typeof COMMANDS)[number];
 
-/** 密码库：单条历史密码（被替换时自动入史） */
+/** 密码库：单条历史密码（被替换时自动入史，记录完整使用区间） */
 export interface PwHistory {
   password: string;
-  /** 被替换时间（该密码停用时间） */
-  changedAt: number;
+  /** 开始使用时间（该密码启用时间） */
+  startedAt: number;
+  /** 结束使用时间（被替换时间） */
+  endedAt: number;
 }
 
 /** 密码库：单条凭证 */

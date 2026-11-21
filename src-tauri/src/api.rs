@@ -77,7 +77,7 @@ pub fn dispatch(app: &tauri::AppHandle, cmd: &str, payload: &Value) -> Result<Va
     };
     let p = payload.clone();
     match cmd {
-        "__ping" => Ok(json!({ "ok": true, "host": "tauri", "version": "0.6.0" })),
+        "__ping" => Ok(json!({ "ok": true, "host": "tauri", "version": "0.6.1" })),
 
         "vault_info" => vault_info(&state, p.get("path").and_then(|v| v.as_str())),
 

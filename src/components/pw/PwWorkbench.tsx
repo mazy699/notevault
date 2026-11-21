@@ -156,7 +156,7 @@ export function PwWorkbench() {
             <ShieldCheck size={14} style={{ color: "var(--ok)" }} /> 已加密
           </span>
         ) : (
-          <span className="pw-lock-hint" title="密码库当前明文存储，建议设置主密码">
+          <span className="pw-lock-hint" title="密码库未加密（默认，开箱即用；如需加密可在右侧设置主密码）">
             <LockOpen size={14} style={{ color: "var(--warn)" }} /> 未加密
           </span>
         )}
@@ -468,11 +468,14 @@ function VaultView() {
     } else {
       const old = entries.find((x) => x.id === editing.id);
       if (old && old.password !== editing.password) {
-        // 编辑态改了密码：旧密码入史
+        // 编辑态改了密码：旧密码入史（开始 = 旧密码启用时间，结束 = 现在）
+        const now = Date.now();
         await pw.updateEntry({
           ...editing,
-          updatedAt: Date.now(),
-          history: old.password ? [...old.history, { password: old.password, changedAt: Date.now() }] : old.history,
+          updatedAt: now,
+          history: old.password
+            ? [...old.history, { password: old.password, startedAt: old.updatedAt, endedAt: now }]
+            : old.history,
         });
       } else {
         await pw.updateEntry(editing);
@@ -565,7 +568,10 @@ function VaultView() {
           <div className="pw-empty">
             <KeyRound size={30} />
             <p>从左侧选择一条凭证，或点击"新增凭证"。</p>
-            <p className="pw-note">数据存储在本地 %APPDATA%/notevault/passwords.json，可用顶栏"导出"备份或迁移到另一台电脑。</p>
+            <p className="pw-note">
+              数据存储在本地 %APPDATA%/notevault/passwords.json（默认不加密，可直接使用；
+              如需加密可在顶栏设置主密码）。可用顶栏"导出"备份或迁移到另一台电脑。
+            </p>
           </div>
         )}
       </div>
@@ -636,7 +642,7 @@ function EntryDetail({
         {entry.url ? <FieldRow label="地址" value={entry.url} copyable link /> : null}
         {entry.notes ? <FieldRow label="备注" value={entry.notes} multiline /> : null}
         <div className="pw-meta">
-          更新于 {fmtTime(entry.updatedAt)} · 创建于 {fmtTime(entry.createdAt)}
+          当前密码自 {fmtTime(entry.updatedAt)} 起 · 创建于 {fmtTime(entry.createdAt)}
         </div>
 
         {/* 更换密码面板 */}
@@ -649,11 +655,14 @@ function EntryDetail({
               compact
               excludePasswords={exclude}
               onUse={(npw) => {
+                const now = Date.now();
                 const e: PwEntry = {
                   ...entry,
                   password: npw,
-                  updatedAt: Date.now(),
-                  history: entry.password ? [...entry.history, { password: entry.password, changedAt: Date.now() }] : entry.history,
+                  updatedAt: now,
+                  history: entry.password
+                    ? [...entry.history, { password: entry.password, startedAt: entry.updatedAt, endedAt: now }]
+                    : entry.history,
                 };
                 void usePw.getState().updateEntry(e);
                 setChangeOpen(false);
@@ -686,8 +695,8 @@ function EntryDetail({
   );
 }
 
-/** 历史密码单行 */
-function HistoryRow({ item, index }: { item: { password: string; changedAt: number }; index: number }) {
+/** 历史密码单行：展示完整使用区间（开始 ~ 结束） */
+function HistoryRow({ item, index }: { item: { password: string; startedAt: number; endedAt: number }; index: number }) {
   const [revealed, setRevealed] = useState(false);
   const [copied, copy] = useCopyFlash();
   return (
@@ -700,7 +709,9 @@ function HistoryRow({ item, index }: { item: { password: string; changedAt: numb
       <button className="icon-btn" title="复制" onClick={() => copy(item.password)}>
         <Copy size={13} />
       </button>
-      <span className="pw-hrow-time">至 {fmtTime(item.changedAt)}</span>
+      <span className="pw-hrow-time" title={`开始 ${fmtTime(item.startedAt)} · 结束 ${fmtTime(item.endedAt)}`}>
+        {fmtTime(item.startedAt)} ~ {fmtTime(item.endedAt)}
+      </span>
       {copied && <span className="pw-hrow-copied">已复制</span>}
     </div>
   );

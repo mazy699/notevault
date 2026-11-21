@@ -1,6 +1,8 @@
 //! NoteVault 桌面宿主（Tauri 2）
 pub mod api;
 pub mod fsops;
+pub mod pwcrypto;
+pub mod pwstore;
 pub mod settings;
 pub mod vault_proto;
 pub mod smoke;

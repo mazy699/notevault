@@ -124,9 +124,43 @@ export const COMMANDS = [
   "settings_set",
   "reveal_in_explorer",
   "open_external",
+  "pw_load",
+  "pw_save",
+  "save_text_file",
 ] as const;
 
 export type Command = (typeof COMMANDS)[number];
+
+/** 密码库：单条历史密码（被替换时自动入史） */
+export interface PwHistory {
+  password: string;
+  /** 被替换时间（该密码停用时间） */
+  changedAt: number;
+}
+
+/** 密码库：单条凭证 */
+export interface PwEntry {
+  id: string;
+  title: string;
+  /** 分类：邮箱 / 工号系统 / 数据库 / 服务器 / 网站 / 其他…（可自定义） */
+  category: string;
+  account: string;
+  password: string;
+  url?: string;
+  notes?: string;
+  /** 当前密码更新时间 */
+  updatedAt: number;
+  createdAt: number;
+  /** 历史密码（旧→新追加） */
+  history: PwHistory[];
+}
+
+/** 密码库整库（明文 JSON 结构） */
+export interface PwDb {
+  format: "notevault-pw-v1";
+  entries: PwEntry[];
+  updatedAt: number;
+}
 
 /** git log 单条提交 */
 export interface GitCommit {

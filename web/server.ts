@@ -8,6 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import os from "node:os";
+import nodeCrypto from "node:crypto";
 import type {
   FileContent,
   FileKind,
@@ -356,7 +357,7 @@ function vaultInfo(p: string | null): VaultInfo | null {
 }
 
 const routes: Record<string, (payload: Record<string, unknown>) => unknown> = {
-  __ping: () => ({ ok: true, host: "web", version: "0.1.0" }),
+  __ping: () => ({ ok: true, host: "web", version: "0.6.0" }),
   vault_info: (p) => vaultInfo(typeof p.path === "string" && p.path ? path.resolve(String(p.path)) : vaultPath),
   vault_pick: () => null, // Web 版由前端弹输入框
   vault_set: (p) => {
@@ -489,7 +490,84 @@ const routes: Record<string, (payload: Record<string, unknown>) => unknown> = {
     openExternal(String(p.path ?? ""));
     return null;
   },
+
+  // ---------------- 密码工作台 ----------------
+  pw_load: (p) => pwLoad(typeof p.masterPassword === "string" ? p.masterPassword : undefined),
+  pw_save: (p) => {
+    const db = p.db as Record<string, unknown> | null;
+    if (!db || typeof db !== "object") throw new Error("密码库数据缺失");
+    pwSave(db, typeof p.masterPassword === "string" && p.masterPassword ? p.masterPassword : null);
+    return { ok: true };
+  },
+  save_text_file: () => {
+    // Web 宿主无文件对话框：前端按 isTauri 分流走浏览器下载
+    return { ok: false, path: undefined };
+  },
 };
+
+// ---------------- 密码库存储（%APPDATA%/notevault/passwords.json，与桌面宿主同一路径/同一加密格式） ----------------
+const PW_FILE = path.join(path.dirname(SETTINGS_FILE), "passwords.json");
+
+/** scrypt KDF 参数（与桌面宿主 Rust 端严格一致：N=2^15, r=8, p=1 → 32 字节密钥） */
+const SCRYPT_OPTS = { cost: 1 << 15, blockSize: 8, parallelization: 1, maxmem: 96 * 1024 * 1024 };
+
+function pwEncrypt(dbJson: string, master: string): string {
+  const salt = nodeCrypto.randomBytes(16);
+  const nonce = nodeCrypto.randomBytes(12);
+  const key = nodeCrypto.scryptSync(master, salt, 32, SCRYPT_OPTS);
+  const cipher = nodeCrypto.createCipheriv("aes-256-gcm", key, nonce);
+  const ct = Buffer.concat([cipher.update(dbJson, "utf-8"), cipher.final()]);
+  const enc = {
+    format: "notevault-pw-enc-v1",
+    kdf: "scrypt",
+    salt: salt.toString("base64"),
+    nonce: nonce.toString("base64"),
+    data: Buffer.concat([ct, cipher.getAuthTag()]).toString("base64"),
+  };
+  return JSON.stringify(enc, null, 2);
+}
+
+function pwDecrypt(rawJson: string, master: string): string {
+  const enc = JSON.parse(rawJson) as { salt: string; nonce: string; data: string };
+  const salt = Buffer.from(enc.salt, "base64");
+  const nonce = Buffer.from(enc.nonce, "base64");
+  const blob = Buffer.from(enc.data, "base64");
+  const key = nodeCrypto.scryptSync(master, salt, 32, SCRYPT_OPTS);
+  const ct = blob.subarray(0, blob.length - 16);
+  const tag = blob.subarray(blob.length - 16);
+  const decipher = nodeCrypto.createDecipheriv("aes-256-gcm", key, nonce);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(ct), decipher.final()]).toString("utf-8");
+}
+
+function pwLoad(master?: string): { encrypted: boolean; db: unknown; wrongPassword?: boolean } {
+  let raw: string;
+  try {
+    raw = fs.readFileSync(PW_FILE, "utf-8");
+  } catch {
+    return { encrypted: false, db: { format: "notevault-pw-v1", entries: [], updatedAt: Date.now() } };
+  }
+  const probed = JSON.parse(raw) as { format?: string };
+  if (probed?.format === "notevault-pw-enc-v1") {
+    if (!master) return { encrypted: true, db: null };
+    try {
+      return { encrypted: true, db: JSON.parse(pwDecrypt(raw, master)) };
+    } catch {
+      return { encrypted: true, db: null, wrongPassword: true };
+    }
+  }
+  return { encrypted: false, db: probed };
+}
+
+function pwSave(db: Record<string, unknown>, master: string | null): void {
+  const json = JSON.stringify(db, null, 2);
+  const content = master ? pwEncrypt(json, master) : json;
+  fs.mkdirSync(path.dirname(PW_FILE), { recursive: true });
+  // 原子写：临时文件 + 重命名，避免写一半损坏
+  const tmp = PW_FILE + ".tmp";
+  fs.writeFileSync(tmp, content, "utf-8");
+  fs.renameSync(tmp, PW_FILE);
+}
 
 // ---------------- MIME ----------------
 const MIME: Record<string, string> = {

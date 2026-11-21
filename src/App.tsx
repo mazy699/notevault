@@ -15,6 +15,9 @@ import { api } from "./api/client";
 const DiffWorkbench = lazy(() =>
   import("./components/diff/DiffWorkbench").then((m) => ({ default: m.DiffWorkbench }))
 );
+const PwWorkbench = lazy(() =>
+  import("./components/pw/PwWorkbench").then((m) => ({ default: m.PwWorkbench }))
+);
 
 export default function App() {
   const init = useVault((s) => s.init);
@@ -149,6 +152,18 @@ export default function App() {
               </div>
             </div>
           </div>
+        ) : workbench === "pw" ? (
+          <Suspense
+            fallback={
+              <div className="content-col">
+                <div className="diff-empty">
+                  <span className="spinner" /> 正在加载密码工作台…
+                </div>
+              </div>
+            }
+          >
+            <PwWorkbench />
+          </Suspense>
         ) : (
           <Suspense
             fallback={

@@ -1,7 +1,7 @@
 /**
  * 宿主适配层：同一套 call(cmd, payload) 契约自动路由到 Tauri invoke 或 HTTP API。
  */
-import type { FileContent, FileNode, SearchResult, Snapshot, VaultInfo } from "../../shared/types";
+import type { FileContent, FileNode, PwDb, SearchResult, Snapshot, VaultInfo } from "../../shared/types";
 
 export function isTauri(): boolean {
   return typeof window !== "undefined" && !!window.__TAURI_INTERNALS__;
@@ -56,6 +56,15 @@ export const api = {
   /** Diff：读取某文件在指定版本的内容（ref=提交 hash 或 "WORKDIR"） */
   gitShow: (repoPath: string, filePath: string, ref: string) =>
     call<FileContent>("git_show", { repoPath, filePath, ref }),
+  /** 密码库：加载（加密库需主密码；db=null 表示需解锁/密码错误） */
+  pwLoad: (masterPassword?: string) =>
+    call<{ encrypted: boolean; db: PwDb | null; wrongPassword?: boolean }>("pw_load", { masterPassword }),
+  /** 密码库：保存整库（提供主密码则加密写盘） */
+  pwSave: (db: PwDb, masterPassword?: string | null) =>
+    call<{ ok: boolean }>("pw_save", { db, masterPassword: masterPassword ?? null }),
+  /** 桌面端：弹出"保存文件"对话框并写盘（Web 端返回 ok:false，由前端走浏览器下载） */
+  saveTextFile: (defaultName: string, content: string) =>
+    call<{ ok: boolean; path?: string }>("save_text_file", { defaultName, content }),
 };
 
 /**

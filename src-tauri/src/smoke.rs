@@ -128,6 +128,53 @@ pub fn run() {
     }
     let _ = std::fs::remove_dir_all(&gdir);
 
+    // ---------------- 密码工作台：pwstore + pwcrypto（独立临时文件，不碰真实用户库） ----------------
+    let pw_path = std::env::temp_dir().join(format!("notevault_smoke_pw_{}.json", std::process::id()));
+    let _ = std::fs::remove_file(&pw_path);
+    std::env::set_var("NOTEVAULT_PASSWORDS_FILE", &pw_path);
+
+    // 首次加载 = 空明文库
+    match crate::pwstore::load(None) {
+        Ok(r) => {
+            check!("pw_first_load_empty", !r.encrypted && r.db.is_some());
+        }
+        Err(e) => check!(format!("pw_first_load_failed: {}", e).as_str(), false),
+    }
+    // 明文保存 → 识别为明文
+    let db = json!({"format": "notevault-pw-v1", "entries": [{"id": "e1", "title": "t", "password": "p"}], "updatedAt": 1});
+    let save_r = crate::pwstore::save(&db, None);
+    check!("pw_save_plain", save_r.is_ok());
+    // 加密保存 → 未提供密码时 encrypted+db=None
+    check!("pw_save_encrypted", crate::pwstore::save(&db, Some("master-主密码")).is_ok());
+    match crate::pwstore::load(None) {
+        Ok(r) => check!("pw_locked_without_master", r.encrypted && r.db.is_none() && !r.wrong_password),
+        Err(e) => check!(format!("pw_locked_failed: {}", e).as_str(), false),
+    }
+    // 错误密码 → wrongPassword
+    match crate::pwstore::load(Some("错误")) {
+        Ok(r) => check!("pw_wrong_password", r.encrypted && r.db.is_none() && r.wrong_password),
+        Err(e) => check!(format!("pw_wrong_failed: {}", e).as_str(), false),
+    }
+    // 正确密码 → 数据一致（roundtrip）
+    match crate::pwstore::load(Some("master-主密码")) {
+        Ok(r) => {
+            let entries_ok = r
+                .db
+                .as_ref()
+                .and_then(|d| d.get("entries").and_then(|v| v.as_array()))
+                .map(|a| a.len() == 1)
+                .unwrap_or(false);
+            check!("pw_unlock_roundtrip", r.encrypted && entries_ok);
+        }
+        Err(e) => check!(format!("pw_unlock_failed: {}", e).as_str(), false),
+    }
+    // pwcrypto 加密格式自检（Node 互操作格式由 Web 端实测覆盖）
+    let enc = crate::pwcrypto::encrypt_to_json("{\"x\":1}", "pw").expect("encrypt");
+    check!("pw_crypto_format", enc.contains("notevault-pw-enc-v1") && enc.contains("\"kdf\""));
+
+    let _ = std::fs::remove_file(&pw_path);
+    std::env::remove_var("NOTEVAULT_PASSWORDS_FILE");
+
     let _ = std::fs::remove_dir_all(&dir);
 
     println!("SMOKE_RESULT={}", json!({ "ok": ok }));

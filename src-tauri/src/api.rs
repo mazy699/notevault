@@ -77,17 +77,14 @@ pub fn dispatch(app: &tauri::AppHandle, cmd: &str, payload: &Value) -> Result<Va
     };
     let p = payload.clone();
     match cmd {
-        "__ping" => Ok(json!({ "ok": true, "host": "tauri", "version": "0.1.0" })),
+        "__ping" => Ok(json!({ "ok": true, "host": "tauri", "version": "0.6.0" })),
 
         "vault_info" => vault_info(&state, p.get("path").and_then(|v| v.as_str())),
 
         "vault_pick" => {
             use tauri_plugin_dialog::DialogExt;
-            let (tx, rx) = std::sync::mpsc::channel::<Option<tauri_plugin_dialog::FilePath>>();
-            app.dialog().file().set_title("选择笔记目录").pick_folder(move |fp| {
-                let _ = tx.send(fp);
-            });
-            let picked = rx.recv().ok().flatten();
+            // spawn_blocking 线程：必须用 blocking_* API（回调式在本线程会立即 None）
+            let picked = app.dialog().file().set_title("选择笔记目录").blocking_pick_folder();
             match picked {
                 Some(fp) => {
                     let path = fp.to_string();
@@ -440,6 +437,42 @@ pub fn dispatch(app: &tauri::AppHandle, cmd: &str, payload: &Value) -> Result<Va
                 open_external_default(path);
             }
             Ok(Value::Null)
+        }
+
+        // ---------------- 密码工作台 ----------------
+        "pw_load" => {
+            let master = p.get("masterPassword").and_then(|v| v.as_str());
+            let r = crate::pwstore::load(master)?;
+            Ok(json!({
+                "encrypted": r.encrypted,
+                "db": r.db,
+                "wrongPassword": r.wrong_password,
+            }))
+        }
+        "pw_save" => {
+            let db = p.get("db").cloned().ok_or("密码库数据缺失")?;
+            let master = p.get("masterPassword").and_then(|v| v.as_str()).filter(|s| !s.is_empty());
+            crate::pwstore::save(&db, master)?;
+            Ok(json!({ "ok": true }))
+        }
+        "save_text_file" => {
+            use tauri_plugin_dialog::DialogExt;
+            let default_name = p.get("defaultName").and_then(|v| v.as_str()).unwrap_or("export.txt");
+            let content = p.get("content").and_then(|v| v.as_str()).unwrap_or("");
+            // 本命令运行在 spawn_blocking 线程：必须用 blocking_* API。
+            // 回调式 save_file 在该线程上会立即以 None 回调（对话框不弹出、静默失败）。
+            let picked = app
+                .dialog()
+                .file()
+                .set_title("导出保存")
+                .set_file_name(default_name)
+                .blocking_save_file();
+            let Some(fp) = picked else {
+                return Ok(json!({ "ok": false }));
+            };
+            let path = fp.to_string();
+            std::fs::write(&path, content).map_err(|e| format!("写入文件失败：{e}"))?;
+            Ok(json!({ "ok": true, "path": path }))
         }
 
         _ => Err(format!("未知命令: {}", cmd)),

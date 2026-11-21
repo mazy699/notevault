@@ -1,0 +1,138 @@
+/* ============================================================
+   Worklog 统一风格映射（feature/worklog-unified）
+   把原 Worklog 的蓝色/灰色系映射到 NoteVault 设计令牌；
+   深色由 NoteVault 全局主题（html.dark）驱动，无需独立切换。
+   ============================================================ */
+
+/* --- 主色：蓝 → NoteVault 紫 --- */
+.wl-root .bg-blue-600 {
+  background-color: var(--accent);
+}
+.wl-root .hover\:bg-blue-700:hover {
+  background-color: var(--accent-strong);
+}
+.wl-root .bg-blue-500 {
+  background-color: var(--accent);
+}
+.wl-root .bg-blue-50,
+.wl-root .bg-blue-50\/30,
+.wl-root .bg-blue-50\/50,
+.wl-root .bg-blue-50\/80 {
+  background-color: var(--accent-soft);
+}
+.wl-root .bg-blue-100 {
+  background-color: color-mix(in srgb, var(--accent) 22%, var(--bg));
+}
+.wl-root .hover\:bg-blue-50:hover,
+.wl-root .hover\:bg-blue-50\/40:hover,
+.wl-root .hover\:bg-blue-50\/60:hover,
+.wl-root .hover\:bg-blue-50\/70:hover {
+  background-color: color-mix(in srgb, var(--accent) 10%, var(--bg));
+}
+.wl-root .hover\:bg-blue-100:hover {
+  background-color: color-mix(in srgb, var(--accent) 20%, var(--bg));
+}
+.wl-root .text-blue-500,
+.wl-root .text-blue-600,
+.wl-root .text-blue-700 {
+  color: var(--accent-text);
+}
+.wl-root .hover\:text-blue-600:hover {
+  color: var(--accent-strong);
+}
+.wl-root .border-blue-200,
+.wl-root .border-blue-300 {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
+}
+.wl-root .border-blue-400,
+.wl-root .hover\:border-blue-400:hover,
+.wl-root .focus\:border-blue-500:focus {
+  border-color: var(--accent);
+}
+.wl-root .ring-blue-200,
+.wl-root .ring-blue-300 {
+  --tw-ring-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+/* --- 中性色：gray → NoteVault 文本/边框/面板令牌 --- */
+.wl-root .bg-white {
+  background-color: var(--bg-panel);
+}
+.wl-root .bg-gray-50,
+.wl-root .bg-gray-50\/60,
+.wl-root .bg-gray-50\/80 {
+  background-color: var(--bg-panel);
+}
+.wl-root .bg-gray-100,
+.wl-root .bg-gray-100\/60,
+.wl-root .bg-gray-100\/70 {
+  background-color: var(--bg-hover);
+}
+.wl-root .hover\:bg-gray-50:hover {
+  background-color: var(--bg-hover);
+}
+.wl-root .hover\:bg-gray-100:hover {
+  background-color: var(--bg-active);
+}
+.wl-root .hover\:bg-gray-200:hover {
+  background-color: var(--bg-active);
+}
+.wl-root .border-gray-100 {
+  border-color: var(--border);
+}
+.wl-root .border-gray-200 {
+  border-color: var(--border);
+}
+.wl-root .border-gray-300 {
+  border-color: var(--border-strong);
+}
+.wl-root .hover\:border-gray-200:hover {
+  border-color: var(--border-strong);
+}
+.wl-root .divide-gray-50 > :not([hidden]) ~ :not([hidden]) {
+  border-color: var(--border);
+}
+.wl-root .text-gray-900,
+.wl-root .text-gray-800,
+.wl-root .text-gray-700 {
+  color: var(--text);
+}
+.wl-root .text-gray-600 {
+  color: var(--text-secondary);
+}
+.wl-root .text-gray-500,
+.wl-root .text-gray-400,
+.wl-root .text-gray-300 {
+  color: var(--text-faint);
+}
+.wl-root .hover\:text-gray-600:hover {
+  color: var(--text);
+}
+
+/* --- 输入控件与卡片外观对齐 NoteVault --- */
+.wl-root input[type="text"],
+.wl-root input[type="date"],
+.wl-root input[type="number"],
+.wl-root input[type="password"],
+.wl-root textarea,
+.wl-root select {
+  background-color: var(--bg);
+  border-color: var(--border);
+  color: var(--text);
+  border-radius: 6px;
+}
+.wl-root input:focus,
+.wl-root textarea:focus,
+.wl-root select:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+.wl-root button {
+  font-family: inherit;
+}
+
+/* --- 顶栏内的按钮态（NoteVault icon-btn .active 已内置，这里补齐 hover 底色） --- */
+.wl-root .topbar .icon-btn.active {
+  color: var(--accent-text);
+  background: var(--accent-soft);
+}

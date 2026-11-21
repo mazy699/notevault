@@ -7,9 +7,9 @@
 import { useEffect, useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import WorklogApp from "./WorklogApp";
-import { useUi } from "./stores/ui";
 import { getWorklogService } from "./session";
 import "./worklog.css";
+import "./worklog-unified.css";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -19,7 +19,6 @@ type BootState = { status: "loading" } | { status: "ready" } | { status: "error"
 
 export function WorklogWorkbench() {
   const [boot, setBoot] = useState<BootState>({ status: "loading" });
-  const theme = useUi((s) => s.theme);
 
   useEffect(() => {
     let alive = true;
@@ -32,7 +31,7 @@ export function WorklogWorkbench() {
   }, []);
 
   return (
-    <div className="content-col wl-root" data-theme={theme}>
+    <div className="content-col wl-root">
       {boot.status === "loading" ? (
         <div className="wl-boot">
           <span className="wl-spinner" /> 正在加载工作日志数据…

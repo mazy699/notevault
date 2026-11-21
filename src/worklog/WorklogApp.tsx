@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { Inbox, ListTodo, NotebookPen, Plus, Settings, Sunrise } from "lucide-react";
 import { useUi } from "./stores/ui";
 import { WeekViewPage } from "./pages/WeekViewPage";
 import { MonthViewPage } from "./pages/MonthViewPage";
@@ -20,20 +21,18 @@ const TABS: { key: Page; label: string }[] = [
   { key: "month", label: "月视图" },
 ];
 
-const SIDES: { key: Page; label: string }[] = [
-  { key: "morning", label: "☀ 晨会" },
-  { key: "todos", label: "待办箱" },
-  { key: "tasks", label: "任务" },
-  { key: "notes", label: "📝 笔记" },
-  { key: "settings", label: "设置" },
+const SIDES: { key: Page; label: string; Icon: typeof Sunrise }[] = [
+  { key: "morning", label: "晨会", Icon: Sunrise },
+  { key: "todos", label: "待办箱", Icon: Inbox },
+  { key: "tasks", label: "任务", Icon: ListTodo },
+  { key: "notes", label: "笔记", Icon: NotebookPen },
+  { key: "settings", label: "设置", Icon: Settings },
 ];
 
 export default function WorklogApp() {
   const page = useUi((s) => s.page);
   const nav = useUi((s) => s.nav);
   const setQuickOpen = useUi((s) => s.setQuickOpen);
-  const theme = useUi((s) => s.theme);
-  const toggleTheme = useUi((s) => s.toggleTheme);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -48,54 +47,35 @@ export default function WorklogApp() {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 py-2">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
-            <div className="flex h-6 w-6 items-center justify-center rounded bg-blue-600 text-xs font-bold text-white">记</div>
-            <span className="font-semibold text-gray-800">WorkLog</span>
-          </div>
-          <nav className="flex gap-1">
-            {TABS.map((t) => (
-              <button
-                key={t.key}
-                onClick={() => nav(t.key)}
-                className={`rounded px-3 py-1.5 text-sm transition-colors ${
-                  page === t.key ? "bg-blue-600 text-white" : "text-gray-600 hover:bg-gray-100"
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </nav>
+      {/* 统一风格顶栏：与 NoteVault 读取/对比/密码工作台同款（品牌 + 分段页签 + 工具按钮） */}
+      <header className="topbar">
+        <div className="brand">
+          <span className="logo-dot">N</span>
+          NoteVault
         </div>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={toggleTheme}
-            aria-label={theme === "dark" ? "切换到浅色主题" : "切换到深色主题"}
-            title={theme === "dark" ? "切换到浅色主题" : "切换到深色主题"}
-            className="mr-1 rounded border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-600 transition-colors hover:bg-gray-50"
-          >
-            {theme === "dark" ? "浅色" : "深色"}
-          </button>
-          {SIDES.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => nav(t.key)}
-              className={`rounded px-3 py-1.5 text-sm transition-colors ${
-                page === t.key ? "bg-blue-50 text-blue-700" : "text-gray-600 hover:bg-gray-100"
-              }`}
-            >
+        <div className="seg">
+          {TABS.map((t) => (
+            <button key={t.key} className={page === t.key ? "active" : ""} onClick={() => nav(t.key)}>
               {t.label}
             </button>
           ))}
-          <button
-            onClick={() => setQuickOpen(true)}
-            title="Ctrl+Shift+N"
-            className="ml-2 rounded bg-red-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-600"
-          >
-            ＋ 快速新建
-          </button>
         </div>
+        <span style={{ flex: 1 }} />
+        {SIDES.map((t) => (
+          <button
+            key={t.key}
+            className={`icon-btn labeled${page === t.key ? " active" : ""}`}
+            title={t.label}
+            onClick={() => nav(t.key)}
+          >
+            <t.Icon size={15} />
+            {t.label}
+          </button>
+        ))}
+        <button className="btn-ghost" onClick={() => setQuickOpen(true)} title="快速新建（Ctrl+Shift+N）">
+          <Plus size={14} />
+          快速新建
+        </button>
       </header>
 
       <main className="min-h-0 flex-1">

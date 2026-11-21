@@ -24,7 +24,10 @@
 | --- | --- |
 | `NoteVault_0.6.1_setup.exe` | **安装版**（NSIS 向导，无需管理员权限） |
 | `NoteVault_0.6.1_portable.exe` + `WebView2Loader.dll` | **免安装便携版**（两个文件放同一目录） |
+| `NoteVault_0.6.1_web.zip` | **Web 版发布包**（解压后双击"启动NoteVault-Web版.bat"后台运行；需 Node.js 18+，含启停脚本与使用说明） |
 | `checksums.txt` | SHA256 校验和 |
+
+> 已经在运行 Web 服务的用户无需重新下载 Web 包；新电脑部署时使用上方 zip 即可。
 
 ## 验证
 

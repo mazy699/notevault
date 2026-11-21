@@ -192,7 +192,12 @@ export function DiffWorkbench() {
 
   return (
     <div className="content-col">
-      <div className="diff-toolbar">
+      {/* 顶栏：品牌 + 模式切换 + 视图/选项（与读取工作台同款样式） */}
+      <div className="topbar">
+        <div className="brand">
+          <span className="logo-dot">N</span>
+          NoteVault
+        </div>
         <div className="seg">
           {(["file", "text", "git"] as Mode[]).map((m) => (
             <button
@@ -204,16 +209,16 @@ export function DiffWorkbench() {
                 if (m === "text") setTextEditing(!results.text);
               }}
             >
-              {m === "file" ? "文件" : m === "text" ? "文本" : "Git"}
+              {m === "file" ? "文件对比" : m === "text" ? "文本对比" : "Git 版本对比"}
             </button>
           ))}
         </div>
+        <span style={{ flex: 1 }} />
         {result && (
           <button className="icon-btn" title="交换两侧" onClick={swap}>
-            <ArrowLeftRight size={14} />
+            <ArrowLeftRight size={15} />
           </button>
         )}
-        <span style={{ flex: 1 }} />
         <div className="seg">
           <button className={viewKind === "side" ? "active" : ""} onClick={() => setViewKind("side")}>并排</button>
           <button className={viewKind === "unified" ? "active" : ""} onClick={() => setViewKind("unified")}>统一</button>
@@ -236,7 +241,7 @@ export function DiffWorkbench() {
         )}
       </div>
 
-      {/* 输入区：文件 / Git 常驻；文本模式仅编辑态显示 */}
+      {/* 输入工具条：随模式变化的输入区 */}
       {error && <div className="diff-error" style={{ margin: "8px 12px" }}>{error}</div>}
 
       {mode === "file" && (

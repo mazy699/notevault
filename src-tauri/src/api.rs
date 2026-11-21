@@ -475,8 +475,169 @@ pub fn dispatch(app: &tauri::AppHandle, cmd: &str, payload: &Value) -> Result<Va
             Ok(json!({ "ok": true, "path": path }))
         }
 
+        // ---------------- Worklog 工作台：整库文件读写（与独立 Worklog 共用 %APPDATA%/worklog） ----------------
+        "wl_db_load" => {
+            let dir = worklog_data_dir();
+            let file = dir.join("worklog.db");
+            let b64 = if file.exists() {
+                use base64::Engine;
+                let bytes = std::fs::read(&file).map_err(|e| format!("读取工作日志数据库失败：{e}"))?;
+                Some(base64::engine::general_purpose::STANDARD.encode(bytes))
+            } else {
+                None
+            };
+            Ok(json!({
+                "dataDir": dir.display().to_string(),
+                "dbFile": file.display().to_string(),
+                "b64": b64,
+            }))
+        }
+        "wl_db_save" => {
+            let dir = worklog_data_dir();
+            std::fs::create_dir_all(&dir).map_err(|e| format!("创建目录失败：{e}"))?;
+            let bytes = decode_b64(p.get("b64").and_then(|v| v.as_str()).unwrap_or(""))?;
+            let file = dir.join("worklog.db");
+            let tmp = dir.join("worklog.db.tmp");
+            std::fs::write(&tmp, bytes).map_err(|e| format!("写入失败：{e}"))?;
+            std::fs::rename(&tmp, &file).map_err(|e| format!("写入失败：{e}"))?;
+            Ok(json!({ "ok": true }))
+        }
+        "wl_aux_read" => {
+            let dir = worklog_data_dir();
+            let name = safe_aux_name(p.get("name").and_then(|v| v.as_str()))?;
+            let file = dir.join(name);
+            let text = if file.exists() {
+                Some(std::fs::read_to_string(&file).map_err(|e| format!("读取失败：{e}"))?)
+            } else {
+                None
+            };
+            Ok(json!({ "text": text }))
+        }
+        "wl_aux_write" => {
+            let dir = worklog_data_dir();
+            std::fs::create_dir_all(&dir).map_err(|e| format!("创建目录失败：{e}"))?;
+            let name = safe_aux_name(p.get("name").and_then(|v| v.as_str()))?;
+            let text = p.get("text").and_then(|v| v.as_str()).unwrap_or("");
+            std::fs::write(dir.join(name), text).map_err(|e| format!("写入失败：{e}"))?;
+            Ok(json!({ "ok": true }))
+        }
+        "wl_backup" => {
+            let dir = worklog_data_dir();
+            let bdir = dir.join("backups");
+            std::fs::create_dir_all(&bdir).map_err(|e| format!("创建备份目录失败：{e}"))?;
+            let bytes = decode_b64(p.get("b64").and_then(|v| v.as_str()).unwrap_or(""))?;
+            let millis = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis())
+                .unwrap_or(0);
+            let dest = bdir.join(format!("worklog-{:013}.db", millis));
+            std::fs::write(&dest, bytes).map_err(|e| format!("写入备份失败：{e}"))?;
+            // 保留最近 10 份
+            if let Ok(read) = std::fs::read_dir(&bdir) {
+                let mut files: Vec<_> = read
+                    .flatten()
+                    .filter_map(|e| {
+                        let n = e.file_name().to_string_lossy().into_owned();
+                        (n.starts_with("worklog-") && n.ends_with(".db")).then_some(n)
+                    })
+                    .collect();
+                files.sort();
+                files.reverse();
+                for old in files.iter().skip(10) {
+                    let _ = std::fs::remove_file(bdir.join(old));
+                }
+            }
+            Ok(json!({ "path": dest.display().to_string() }))
+        }
+        "wl_data_info" => {
+            let dir = worklog_data_dir();
+            Ok(json!({
+                "dataDir": dir.display().to_string(),
+                "dbFile": dir.join("worklog.db").display().to_string(),
+            }))
+        }
+        "wl_ai_proxy" => {
+            let url = p.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            if !(url.starts_with("http://") || url.starts_with("https://")) {
+                return Err("AI 代理仅支持 http(s) 地址".into());
+            }
+            let method = p
+                .get("method")
+                .and_then(|v| v.as_str())
+                .unwrap_or("POST")
+                .to_uppercase();
+            let headers = p.get("headers").and_then(|v| v.as_object()).cloned().unwrap_or_default();
+            let body = p.get("body").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let agent = ureq::AgentBuilder::new()
+                .timeout(std::time::Duration::from_secs(90))
+                .build();
+            let mut req = agent.request(&method, &url);
+            for (k, v) in headers.iter() {
+                if let Some(vs) = v.as_str() {
+                    req = req.set(k, vs);
+                }
+            }
+            let result = match body {
+                Some(b) => req.send_string(&b),
+                None => req.call(),
+            };
+            let (status, text) = match result {
+                Ok(resp) => {
+                    let status = resp.status();
+                    let text = resp.into_string().map_err(|e| format!("读取响应失败：{e}"))?;
+                    (status, text)
+                }
+                Err(ureq::Error::Status(code, resp)) => (code, resp.into_string().unwrap_or_default()),
+                Err(e) => return Err(format!("网络错误：{e}")),
+            };
+            let cap = 2 * 1024 * 1024;
+            let trimmed = if text.len() > cap {
+                text[..text.floor_char_boundary(cap)].to_string()
+            } else {
+                text
+            };
+            Ok(json!({ "status": status, "body": trimmed }))
+        }
+
         _ => Err(format!("未知命令: {}", cmd)),
     }
+}
+
+/// Worklog 数据目录：WORKLOG_DATA_DIR 覆盖，默认 %APPDATA%/worklog（与独立 Worklog 共用）
+fn worklog_data_dir() -> PathBuf {
+    if let Ok(p) = std::env::var("WORKLOG_DATA_DIR") {
+        if !p.is_empty() {
+            return PathBuf::from(p);
+        }
+    }
+    let base = std::env::var("APPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            let home = std::env::var("HOME").unwrap_or_default();
+            PathBuf::from(home).join(".local/share")
+        });
+    base.join("worklog")
+}
+
+/// 附属文件名白名单：仅允许简单 json 文件名（防路径穿越）
+fn safe_aux_name(v: Option<&str>) -> Result<String, String> {
+    let name = v.unwrap_or("").to_string();
+    let ok = !name.contains("..")
+        && name.ends_with(".json")
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-');
+    if !ok {
+        return Err("非法的附属文件名".into());
+    }
+    Ok(name)
+}
+
+fn decode_b64(s: &str) -> Result<Vec<u8>, String> {
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD
+        .decode(s)
+        .map_err(|e| format!("base64 解码失败：{e}"))
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -544,4 +705,35 @@ pub async fn api(app: tauri::AppHandle, cmd: String, payload: Value) -> Result<V
     tauri::async_runtime::spawn_blocking(move || dispatch(&app, &cmd, &payload))
         .await
         .map_err(|e| format!("任务执行失败: {}", e))?
+}
+
+#[cfg(test)]
+mod wl_tests {
+    use super::*;
+
+    #[test]
+    fn aux_name_whitelist() {
+        assert!(safe_aux_name(Some("ai.json")).is_ok());
+        assert!(safe_aux_name(Some("../evil.json")).is_err());
+        assert!(safe_aux_name(Some("a/b.json")).is_err());
+        assert!(safe_aux_name(Some("x.txt")).is_err());
+        assert!(safe_aux_name(None).is_err());
+    }
+
+    #[test]
+    fn worklog_dir_env_override() {
+        std::env::set_var("WORKLOG_DATA_DIR", "C:/nv-wl-test");
+        let dir = worklog_data_dir();
+        std::env::remove_var("WORKLOG_DATA_DIR");
+        assert!(dir.to_string_lossy().contains("nv-wl-test"));
+    }
+
+    #[test]
+    fn b64_roundtrip() {
+        let bytes = vec![0u8, 1, 2, 250, 255];
+        use base64::Engine;
+        let s = base64::engine::general_purpose::STANDARD.encode(&bytes);
+        assert_eq!(decode_b64(&s).unwrap(), bytes);
+        assert!(decode_b64("!!!").is_err());
+    }
 }

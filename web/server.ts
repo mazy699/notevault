@@ -503,7 +503,96 @@ const routes: Record<string, (payload: Record<string, unknown>) => unknown> = {
     // Web 宿主无文件对话框：前端按 isTauri 分流走浏览器下载
     return { ok: false, path: undefined };
   },
+
+  // ---------------- Worklog 工作台：整库文件读写（与独立 Worklog 共用 %APPDATA%/worklog） ----------------
+  wl_db_load: () => {
+    const dir = worklogDataDir();
+    const file = path.join(dir, "worklog.db");
+    if (!fs.existsSync(file)) return { dataDir: dir, dbFile: file, b64: null };
+    return { dataDir: dir, dbFile: file, b64: fs.readFileSync(file).toString("base64") };
+  },
+  wl_db_save: (p) => {
+    const dir = worklogDataDir();
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, "worklog.db");
+    const tmp = file + ".tmp";
+    fs.writeFileSync(tmp, Buffer.from(String(p.b64 ?? ""), "base64"));
+    fs.renameSync(tmp, file);
+    return { ok: true };
+  },
+  wl_aux_read: (p) => {
+    const name = safeAuxName(p.name);
+    const file = path.join(worklogDataDir(), name);
+    return { text: fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : null };
+  },
+  wl_aux_write: (p) => {
+    const name = safeAuxName(p.name);
+    const dir = worklogDataDir();
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, name), String(p.text ?? ""), "utf-8");
+    return { ok: true };
+  },
+  wl_backup: (p) => {
+    const dir = worklogDataDir();
+    const bdir = path.join(dir, "backups");
+    fs.mkdirSync(bdir, { recursive: true });
+    const stamp = new Date()
+      .toISOString()
+      .replace(/[-:T]/g, "")
+      .slice(0, 14);
+    const dest = path.join(bdir, `worklog-${stamp}.db`);
+    fs.writeFileSync(dest, Buffer.from(String(p.b64 ?? ""), "base64"));
+    // 保留最近 10 份
+    const files = fs
+      .readdirSync(bdir)
+      .filter((f) => f.startsWith("worklog-") && f.endsWith(".db"))
+      .sort()
+      .reverse();
+    for (let i = 10; i < files.length; i++) {
+      try {
+        fs.unlinkSync(path.join(bdir, files[i]));
+      } catch {
+        /* 单个删除失败不阻塞 */
+      }
+    }
+    return { path: dest };
+  },
+  wl_data_info: () => {
+    const dir = worklogDataDir();
+    return { dataDir: dir, dbFile: path.join(dir, "worklog.db") };
+  },
+  wl_ai_proxy: async (p) => {
+    const url = String(p.url ?? "");
+    if (!/^https?:\/\//i.test(url)) throw new Error("AI 代理仅支持 http(s) 地址");
+    const method = String(p.method ?? "POST").toUpperCase();
+    const headers: Record<string, string> =
+      p.headers && typeof p.headers === "object" ? (p.headers as Record<string, string>) : {};
+    const body = typeof p.body === "string" ? p.body : undefined;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 90000);
+    try {
+      const res = await fetch(url, { method, headers, body, signal: ctrl.signal });
+      const text = await res.text();
+      return { status: res.status, body: text.slice(0, 2 * 1024 * 1024) };
+    } finally {
+      clearTimeout(timer);
+    }
+  },
 };
+
+/** Worklog 数据目录：WORKLOG_DATA_DIR 覆盖，默认 %APPDATA%/worklog（与独立 Worklog 共用） */
+function worklogDataDir(): string {
+  if (process.env.WORKLOG_DATA_DIR) return path.resolve(process.env.WORKLOG_DATA_DIR);
+  const base = process.env.APPDATA || path.join(os.homedir(), ".local/share");
+  return path.join(base, "worklog");
+}
+
+/** 附属文件名白名单：仅允许简单 json 文件名（防路径穿越） */
+function safeAuxName(v: unknown): string {
+  const name = String(v ?? "");
+  if (!/^[\w.-]+\.json$/.test(name) || name.includes("..")) throw new Error("非法的附属文件名");
+  return name;
+}
 
 // ---------------- 密码库存储（%APPDATA%/notevault/passwords.json，与桌面宿主同一路径/同一加密格式） ----------------
 const PW_FILE = path.join(path.dirname(SETTINGS_FILE), "passwords.json");

@@ -30,13 +30,16 @@ import type {
   WorkEntry,
 } from "../types";
 
+import { getWorklogService } from "../session";
+import { saveWorklogFile } from "./host";
+
+/** 通道 → 前端 DataService（sql.js 内存库）直连，无需宿主 IPC */
 async function call<T>(channel: string, payload?: unknown): Promise<T> {
   try {
-    return (await window.api.invoke(channel, payload)) as T;
+    const svc = await getWorklogService();
+    return (await svc.dispatch(channel, payload as Record<string, unknown>)) as T;
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    // Electron 会给 remote method 错误加前缀，剥掉后展示干净的业务错误信息
-    throw new Error(msg.replace(/^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/, ""));
+    throw new Error(e instanceof Error ? e.message : String(e));
   }
 }
 
@@ -82,7 +85,12 @@ export const api = {
 
   // 数据与备份
   backupNow: () => call<string>("backup_now"),
-  exportJson: () => call<string>("export_json"),
+  /** 导出 JSON：数据层返回文本，桌面端弹保存对话框 / Web 端浏览器下载，返回保存位置描述 */
+  exportJson: async () => {
+    const text = await call<string>("export_json");
+    const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    return saveWorklogFile(`worklog-export-${stamp}.json`, text);
+  },
   importJson: (text: string) => call<void>("import_json", { text }),
   settingsGet: (key: string) => call<string | null>("settings_get", { key }),
   settingsSet: (key: string, value: string) => call<void>("settings_set", { key, value }),

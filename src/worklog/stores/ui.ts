@@ -23,11 +23,24 @@ const initialShowCompletedTasks = (): boolean => {
 };
 
 const applyTheme = (theme: Theme): void => {
-  document.documentElement.dataset.theme = theme;
-  document.documentElement.style.colorScheme = theme;
-  document
-    .querySelector('meta[name="theme-color"]')
-    ?.setAttribute("content", theme === "dark" ? "#0f172a" : "#f8fafc");
+  // 接入 NoteVault 后主题作用于工作台根节点（.wl-root），与 NoteVault 全局主题隔离
+  const root = document.querySelector<HTMLElement>(".wl-root");
+  if (root) {
+    root.dataset.theme = theme;
+    root.style.colorScheme = theme;
+  } else {
+    document.documentElement.dataset.theme = theme;
+  }
+};
+
+const initialTheme = (): Theme => {
+  try {
+    if (localStorage.getItem(THEME_KEY) === "dark") return "dark";
+    if (localStorage.getItem(THEME_KEY) === "light") return "light";
+  } catch {
+    /* ignore */
+  }
+  return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
 };
 
 interface UiState {
@@ -63,7 +76,7 @@ interface UiState {
 }
 
 export const useUi = create<UiState>()((set) => ({
-  theme: document.documentElement.dataset.theme === "dark" ? "dark" : "light",
+  theme: initialTheme(),
   showCompletedTasks: initialShowCompletedTasks(),
   page: "week",
   taskReturnPage: "week",

@@ -65,6 +65,17 @@ export const api = {
   /** 桌面端：弹出"保存文件"对话框并写盘（Web 端返回 ok:false，由前端走浏览器下载） */
   saveTextFile: (defaultName: string, content: string) =>
     call<{ ok: boolean; path?: string }>("save_text_file", { defaultName, content }),
+
+  // ---- Worklog 工作台：整库文件读写（sql.js 在前端运行，宿主只做字节落盘） ----
+  wlDbLoad: () => call<{ dataDir: string; dbFile: string; b64: string | null }>("wl_db_load", {}),
+  wlDbSave: (b64: string) => call<{ ok: boolean }>("wl_db_save", { b64 }),
+  wlAuxRead: (name: string) => call<{ text: string | null }>("wl_aux_read", { name }),
+  wlAuxWrite: (name: string, text: string) => call<{ ok: boolean }>("wl_aux_write", { name, text }),
+  wlBackup: (b64: string) => call<{ path: string }>("wl_backup", { b64 }),
+  wlDataInfo: () => call<{ dataDir: string; dbFile: string }>("wl_data_info", {}),
+  /** AI 代理：宿主侧发起 HTTP（规避 WebView/浏览器 CORS），仅允许 http(s) */
+  wlAiProxy: (req: { url: string; method?: string; headers?: Record<string, string>; body?: string }) =>
+    call<{ status: number; body: string }>("wl_ai_proxy", req),
 };
 
 /**

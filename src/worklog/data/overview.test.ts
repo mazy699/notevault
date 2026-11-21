@@ -7,7 +7,7 @@ import { createEntry } from "./entry";
 import { createTask } from "./task";
 import { monthOverview, weekMatrix } from "./overview";
 import { isWorkday } from "./workday";
-import { addDaysStr, monthFirst, todayStr, weekdayCN } from "./dates";
+import { addDaysStr, todayStr, weekdayCN } from "./dates";
 import type { CreateTaskInput } from "../types";
 
 const BASE: CreateTaskInput = { title: "任务", type: "planned_dev", priority: "medium", estimateDays: 3 };

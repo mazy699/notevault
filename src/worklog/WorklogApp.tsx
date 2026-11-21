@@ -28,7 +28,7 @@ const SIDES: { key: Page; label: string }[] = [
   { key: "settings", label: "设置" },
 ];
 
-export default function App() {
+export default function WorklogApp() {
   const page = useUi((s) => s.page);
   const nav = useUi((s) => s.nav);
   const setQuickOpen = useUi((s) => s.setQuickOpen);

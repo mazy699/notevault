@@ -175,6 +175,25 @@ pub fn run() {
     let _ = std::fs::remove_file(&pw_path);
     std::env::remove_var("NOTEVAULT_PASSWORDS_FILE");
 
+    // ---------------- Worklog 工作台：整库文件层（独立临时目录） ----------------
+    let wl_dir = std::env::temp_dir().join(format!("notevault_smoke_wl_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&wl_dir);
+    std::env::set_var("WORKLOG_DATA_DIR", &wl_dir);
+    check!("wl_load_empty", crate::wlstore::load_db(&wl_dir).unwrap().is_none());
+    check!("wl_save_roundtrip", crate::wlstore::save_db(&wl_dir, b"SQLite format 3").is_ok()
+        && crate::wlstore::load_db(&wl_dir).unwrap().unwrap() == b"SQLite format 3");
+    check!(
+        "wl_aux_roundtrip",
+        crate::wlstore::aux_write(&wl_dir, "ai.json", "{\"k\":1}").is_ok()
+            && crate::wlstore::aux_read(&wl_dir, "ai.json").unwrap().unwrap().contains("\"k\"")
+    );
+    match crate::wlstore::backup(&wl_dir, b"bk") {
+        Ok(p) => check!("wl_backup_written", p.exists()),
+        Err(_) => check!("wl_backup_written", false),
+    }
+    let _ = std::fs::remove_dir_all(&wl_dir);
+    std::env::remove_var("WORKLOG_DATA_DIR");
+
     let _ = std::fs::remove_dir_all(&dir);
 
     println!("SMOKE_RESULT={}", json!({ "ok": ok }));

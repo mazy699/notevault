@@ -77,7 +77,7 @@ pub fn dispatch(app: &tauri::AppHandle, cmd: &str, payload: &Value) -> Result<Va
     };
     let p = payload.clone();
     match cmd {
-        "__ping" => Ok(json!({ "ok": true, "host": "tauri", "version": "0.6.1" })),
+        "__ping" => Ok(json!({ "ok": true, "host": "tauri", "version": "0.7.0" })),
 
         "vault_info" => vault_info(&state, p.get("path").and_then(|v| v.as_str())),
 
@@ -477,84 +477,47 @@ pub fn dispatch(app: &tauri::AppHandle, cmd: &str, payload: &Value) -> Result<Va
 
         // ---------------- Worklog 工作台：整库文件读写（与独立 Worklog 共用 %APPDATA%/worklog） ----------------
         "wl_db_load" => {
-            let dir = worklog_data_dir();
-            let file = dir.join("worklog.db");
-            let b64 = if file.exists() {
+            let dir = crate::wlstore::worklog_data_dir();
+            let bytes = crate::wlstore::load_db(&dir)?;
+            let b64 = bytes.map(|b| {
                 use base64::Engine;
-                let bytes = std::fs::read(&file).map_err(|e| format!("读取工作日志数据库失败：{e}"))?;
-                Some(base64::engine::general_purpose::STANDARD.encode(bytes))
-            } else {
-                None
-            };
+                base64::engine::general_purpose::STANDARD.encode(b)
+            });
             Ok(json!({
                 "dataDir": dir.display().to_string(),
-                "dbFile": file.display().to_string(),
+                "dbFile": crate::wlstore::db_file(&dir).display().to_string(),
                 "b64": b64,
             }))
         }
         "wl_db_save" => {
-            let dir = worklog_data_dir();
-            std::fs::create_dir_all(&dir).map_err(|e| format!("创建目录失败：{e}"))?;
+            let dir = crate::wlstore::worklog_data_dir();
             let bytes = decode_b64(p.get("b64").and_then(|v| v.as_str()).unwrap_or(""))?;
-            let file = dir.join("worklog.db");
-            let tmp = dir.join("worklog.db.tmp");
-            std::fs::write(&tmp, bytes).map_err(|e| format!("写入失败：{e}"))?;
-            std::fs::rename(&tmp, &file).map_err(|e| format!("写入失败：{e}"))?;
+            crate::wlstore::save_db(&dir, &bytes)?;
             Ok(json!({ "ok": true }))
         }
         "wl_aux_read" => {
-            let dir = worklog_data_dir();
-            let name = safe_aux_name(p.get("name").and_then(|v| v.as_str()))?;
-            let file = dir.join(name);
-            let text = if file.exists() {
-                Some(std::fs::read_to_string(&file).map_err(|e| format!("读取失败：{e}"))?)
-            } else {
-                None
-            };
+            let dir = crate::wlstore::worklog_data_dir();
+            let name = p.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            let text = crate::wlstore::aux_read(&dir, name)?;
             Ok(json!({ "text": text }))
         }
         "wl_aux_write" => {
-            let dir = worklog_data_dir();
-            std::fs::create_dir_all(&dir).map_err(|e| format!("创建目录失败：{e}"))?;
-            let name = safe_aux_name(p.get("name").and_then(|v| v.as_str()))?;
+            let dir = crate::wlstore::worklog_data_dir();
+            let name = p.get("name").and_then(|v| v.as_str()).unwrap_or("");
             let text = p.get("text").and_then(|v| v.as_str()).unwrap_or("");
-            std::fs::write(dir.join(name), text).map_err(|e| format!("写入失败：{e}"))?;
+            crate::wlstore::aux_write(&dir, name, text)?;
             Ok(json!({ "ok": true }))
         }
         "wl_backup" => {
-            let dir = worklog_data_dir();
-            let bdir = dir.join("backups");
-            std::fs::create_dir_all(&bdir).map_err(|e| format!("创建备份目录失败：{e}"))?;
+            let dir = crate::wlstore::worklog_data_dir();
             let bytes = decode_b64(p.get("b64").and_then(|v| v.as_str()).unwrap_or(""))?;
-            let millis = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_millis())
-                .unwrap_or(0);
-            let dest = bdir.join(format!("worklog-{:013}.db", millis));
-            std::fs::write(&dest, bytes).map_err(|e| format!("写入备份失败：{e}"))?;
-            // 保留最近 10 份
-            if let Ok(read) = std::fs::read_dir(&bdir) {
-                let mut files: Vec<_> = read
-                    .flatten()
-                    .filter_map(|e| {
-                        let n = e.file_name().to_string_lossy().into_owned();
-                        (n.starts_with("worklog-") && n.ends_with(".db")).then_some(n)
-                    })
-                    .collect();
-                files.sort();
-                files.reverse();
-                for old in files.iter().skip(10) {
-                    let _ = std::fs::remove_file(bdir.join(old));
-                }
-            }
-            Ok(json!({ "path": dest.display().to_string() }))
+            let path = crate::wlstore::backup(&dir, &bytes)?;
+            Ok(json!({ "path": path.display().to_string() }))
         }
         "wl_data_info" => {
-            let dir = worklog_data_dir();
-            Ok(json!({
-                "dataDir": dir.display().to_string(),
-                "dbFile": dir.join("worklog.db").display().to_string(),
-            }))
+            let dir = crate::wlstore::worklog_data_dir();
+            let (data_dir, db_file) = crate::wlstore::info(&dir);
+            Ok(json!({ "dataDir": data_dir, "dbFile": db_file }))
         }
         "wl_ai_proxy" => {
             let url = p.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string();
@@ -601,36 +564,6 @@ pub fn dispatch(app: &tauri::AppHandle, cmd: &str, payload: &Value) -> Result<Va
 
         _ => Err(format!("未知命令: {}", cmd)),
     }
-}
-
-/// Worklog 数据目录：WORKLOG_DATA_DIR 覆盖，默认 %APPDATA%/worklog（与独立 Worklog 共用）
-fn worklog_data_dir() -> PathBuf {
-    if let Ok(p) = std::env::var("WORKLOG_DATA_DIR") {
-        if !p.is_empty() {
-            return PathBuf::from(p);
-        }
-    }
-    let base = std::env::var("APPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            let home = std::env::var("HOME").unwrap_or_default();
-            PathBuf::from(home).join(".local/share")
-        });
-    base.join("worklog")
-}
-
-/// 附属文件名白名单：仅允许简单 json 文件名（防路径穿越）
-fn safe_aux_name(v: Option<&str>) -> Result<String, String> {
-    let name = v.unwrap_or("").to_string();
-    let ok = !name.contains("..")
-        && name.ends_with(".json")
-        && name
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-');
-    if !ok {
-        return Err("非法的附属文件名".into());
-    }
-    Ok(name)
 }
 
 fn decode_b64(s: &str) -> Result<Vec<u8>, String> {
@@ -707,33 +640,3 @@ pub async fn api(app: tauri::AppHandle, cmd: String, payload: Value) -> Result<V
         .map_err(|e| format!("任务执行失败: {}", e))?
 }
 
-#[cfg(test)]
-mod wl_tests {
-    use super::*;
-
-    #[test]
-    fn aux_name_whitelist() {
-        assert!(safe_aux_name(Some("ai.json")).is_ok());
-        assert!(safe_aux_name(Some("../evil.json")).is_err());
-        assert!(safe_aux_name(Some("a/b.json")).is_err());
-        assert!(safe_aux_name(Some("x.txt")).is_err());
-        assert!(safe_aux_name(None).is_err());
-    }
-
-    #[test]
-    fn worklog_dir_env_override() {
-        std::env::set_var("WORKLOG_DATA_DIR", "C:/nv-wl-test");
-        let dir = worklog_data_dir();
-        std::env::remove_var("WORKLOG_DATA_DIR");
-        assert!(dir.to_string_lossy().contains("nv-wl-test"));
-    }
-
-    #[test]
-    fn b64_roundtrip() {
-        let bytes = vec![0u8, 1, 2, 250, 255];
-        use base64::Engine;
-        let s = base64::engine::general_purpose::STANDARD.encode(&bytes);
-        assert_eq!(decode_b64(&s).unwrap(), bytes);
-        assert!(decode_b64("!!!").is_err());
-    }
-}

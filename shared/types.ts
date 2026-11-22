@@ -127,6 +127,13 @@ export const COMMANDS = [
   "pw_load",
   "pw_save",
   "save_text_file",
+  "wl_db_load",
+  "wl_db_save",
+  "wl_aux_read",
+  "wl_aux_write",
+  "wl_backup",
+  "wl_data_info",
+  "wl_ai_proxy",
 ] as const;
 
 export type Command = (typeof COMMANDS)[number];

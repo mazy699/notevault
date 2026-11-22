@@ -20,3 +20,7 @@ Thumbs.db
 
 # 临时诊断
 .tmp_*
+
+.wl-testdata/
+release/asis/
+release/unified/

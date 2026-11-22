@@ -1,0 +1,555 @@
+
+
+.wl-root {
+  height: 100%;
+}
+
+.wl-root {
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: inherit;
+  overflow: hidden;
+}
+
+html.dark .wl-root {
+  color-scheme: dark;
+  background-color: #0b1220;
+}
+
+html.dark .wl-root body {
+  background-color: #0f172a;
+  color: #e2e8f0;
+}
+
+html.dark .wl-root [class~="bg-white"] {
+  background-color: #1b263a;
+}
+
+html.dark .wl-root [class~="bg-gray-50"] {
+  background-color: #243147;
+}
+
+html.dark .wl-root [class~="bg-gray-50/60"] {
+  background-color: rgb(36 49 71 / 0.6);
+}
+
+html.dark .wl-root [class~="bg-gray-50/80"] {
+  background-color: rgb(36 49 71 / 0.8);
+}
+
+html.dark .wl-root [class~="bg-gray-100"] {
+  background-color: #2d3c55;
+}
+
+html.dark .wl-root [class~="bg-gray-100/60"] {
+  background-color: rgb(45 60 85 / 0.6);
+}
+
+html.dark .wl-root [class~="bg-gray-100/70"] {
+  background-color: rgb(45 60 85 / 0.7);
+}
+
+html.dark .wl-root [class~="bg-blue-50"] {
+  background-color: #172554;
+}
+
+html.dark .wl-root [class~="bg-blue-50/30"] {
+  background-color: rgb(23 37 84 / 0.3);
+}
+
+html.dark .wl-root [class~="bg-blue-50/50"] {
+  background-color: rgb(23 37 84 / 0.5);
+}
+
+html.dark .wl-root [class~="bg-blue-50/80"] {
+  background-color: rgb(23 37 84 / 0.8);
+}
+
+html.dark .wl-root [class~="bg-blue-100"] {
+  background-color: #1e3a8a;
+}
+
+html.dark .wl-root [class~="bg-red-50"] {
+  background-color: #3f1d25;
+}
+
+html.dark .wl-root [class~="bg-green-50"] {
+  background-color: #143526;
+}
+
+html.dark .wl-root [class~="bg-amber-50"] {
+  background-color: #3a2d16;
+}
+
+html.dark .wl-root [class~="bg-orange-100"] {
+  background-color: #4a2b13;
+}
+
+html.dark .wl-root [class~="bg-violet-50"] {
+  background-color: #2e1a47;
+}
+
+html.dark .wl-root [class~="hover:bg-gray-50"]:hover {
+  background-color: #243147;
+}
+
+html.dark .wl-root [class~="hover:bg-gray-100"]:hover {
+  background-color: #2d3c55;
+}
+
+html.dark .wl-root [class~="hover:bg-gray-200"]:hover {
+  background-color: #3a4b66;
+}
+
+html.dark .wl-root [class~="hover:bg-blue-50/40"]:hover {
+  background-color: rgb(23 37 84 / 0.4);
+}
+
+html.dark .wl-root [class~="hover:bg-blue-50/60"]:hover {
+  background-color: rgb(23 37 84 / 0.6);
+}
+
+html.dark .wl-root [class~="hover:bg-blue-50/70"]:hover {
+  background-color: rgb(23 37 84 / 0.7);
+}
+
+html.dark .wl-root [class~="hover:bg-blue-100"]:hover {
+  background-color: #1e3a8a;
+}
+
+html.dark .wl-root [class~="hover:bg-amber-100"]:hover {
+  background-color: #4a3818;
+}
+
+html.dark .wl-root [class~="hover:bg-violet-100"]:hover {
+  background-color: #3b2358;
+}
+
+html.dark .wl-root [class~="hover:bg-red-50"]:hover {
+  background-color: #3f1d25;
+}
+
+html.dark .wl-root [class~="border-gray-100"] {
+  border-color: #2d3c55;
+}
+
+html.dark .wl-root [class~="border-gray-200"] {
+  border-color: #3a4b66;
+}
+
+html.dark .wl-root [class~="border-gray-300"] {
+  border-color: #4d607d;
+}
+
+html.dark .wl-root [class~="border-blue-200"] {
+  border-color: #1d4ed8;
+}
+
+html.dark .wl-root [class~="border-blue-300"] {
+  border-color: #2563eb;
+}
+
+html.dark .wl-root [class~="border-blue-400"] {
+  border-color: #60a5fa;
+}
+
+html.dark .wl-root [class~="border-red-200"] {
+  border-color: #7f1d1d;
+}
+
+html.dark .wl-root [class~="border-green-300"] {
+  border-color: #166534;
+}
+
+html.dark .wl-root [class~="border-amber-200"] {
+  border-color: #6b4f1d;
+}
+
+html.dark .wl-root [class~="border-amber-300"] {
+  border-color: #85621f;
+}
+
+html.dark .wl-root [class~="border-violet-200"] {
+  border-color: #5b21b6;
+}
+
+html.dark .wl-root [class~="hover:border-gray-200"]:hover {
+  border-color: #475569;
+}
+
+html.dark .wl-root [class~="hover:border-blue-400"]:hover,
+html.dark .wl-root [class~="focus:border-blue-500"]:focus {
+  border-color: #60a5fa;
+}
+
+html.dark .wl-root [class~="divide-gray-50"] > :not([hidden]) ~ :not([hidden]) {
+  border-color: #2d3c55;
+}
+
+html.dark .wl-root [class~="ring-blue-200"] {
+  --tw-ring-color: #1d4ed8;
+}
+
+html.dark .wl-root [class~="ring-blue-300"] {
+  --tw-ring-color: #2563eb;
+}
+
+html.dark .wl-root [class~="text-gray-900"] {
+  color: #f8fafc;
+}
+
+html.dark .wl-root [class~="text-gray-800"] {
+  color: #e2e8f0;
+}
+
+html.dark .wl-root [class~="text-gray-700"] {
+  color: #cbd5e1;
+}
+
+html.dark .wl-root [class~="text-gray-600"] {
+  color: #a8b6c8;
+}
+
+html.dark .wl-root [class~="text-gray-500"] {
+  color: #94a3b8;
+}
+
+html.dark .wl-root [class~="text-gray-400"] {
+  color: #718096;
+}
+
+html.dark .wl-root [class~="text-gray-300"] {
+  color: #52627a;
+}
+
+html.dark .wl-root [class~="hover:text-gray-600"]:hover {
+  color: #cbd5e1;
+}
+
+html.dark .wl-root [class~="text-blue-500"],
+html.dark .wl-root [class~="text-blue-600"],
+html.dark .wl-root [class~="hover:text-blue-600"]:hover {
+  color: #60a5fa;
+}
+
+html.dark .wl-root [class~="text-blue-700"] {
+  color: #93c5fd;
+}
+
+html.dark .wl-root [class~="text-red-400"],
+html.dark .wl-root [class~="text-red-500"],
+html.dark .wl-root [class~="hover:text-red-500"]:hover {
+  color: #f87171;
+}
+
+html.dark .wl-root [class~="text-red-600"] {
+  color: #fca5a5;
+}
+
+html.dark .wl-root [class~="text-amber-500"] {
+  color: #fbbf24;
+}
+
+html.dark .wl-root [class~="text-amber-700"] {
+  color: #fcd34d;
+}
+
+html.dark .wl-root [class~="text-amber-800"] {
+  color: #fde68a;
+}
+
+html.dark .wl-root [class~="text-orange-600"] {
+  color: #fb923c;
+}
+
+html.dark .wl-root [class~="text-violet-700"] {
+  color: #c4b5fd;
+}
+
+html.dark .wl-root [class~="text-green-600"] {
+  color: #4ade80;
+}
+
+html.dark .wl-root [class~="text-green-700"] {
+  color: #86efac;
+}
+
+html.dark .wl-root input,
+html.dark .wl-root textarea,
+html.dark .wl-root select {
+  color: #e2e8f0;
+}
+
+html.dark .wl-root input::placeholder,
+html.dark .wl-root textarea::placeholder {
+  color: #64748b;
+}
+
+html.dark .wl-root option {
+  background-color: #1b263a;
+  color: #e2e8f0;
+}
+
+html.dark .wl-root input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.75);
+}
+
+html.dark .wl-root .md-body code {
+  background: #2d3c55;
+  color: #e2e8f0;
+}
+
+html.dark .wl-root .md-body pre {
+  background: #111827;
+  border-color: #3a4b66;
+}
+
+html.dark .wl-root .md-body blockquote {
+  border-left-color: #4d607d;
+  color: #94a3b8;
+}
+
+html.dark .wl-root .md-body th,
+html.dark .wl-root .md-body td {
+  border-color: #3a4b66;
+}
+
+html.dark .wl-root .wl-root .wl-root ::-webkit-scrollbar-thumb {
+  background: #4d607d;
+}
+
+html.dark .wl-root .wl-root .wl-root .wl-root ::-webkit-scrollbar-thumb:hover {
+  background: #607595;
+}
+
+/* markdown 渲染（工作条目 / 描述 / 计划） */
+.wl-root .md-body {
+  font-size: 13px;
+  line-height: 1.65;
+  word-break: break-word;
+}
+.wl-root .md-body p {
+  margin: 2px 0;
+}
+.wl-root .md-body h1,
+.wl-root .md-body h2,
+.wl-root .md-body h3,
+.wl-root .md-body h4 {
+  font-weight: 600;
+  margin: 6px 0 3px;
+}
+.wl-root .md-body h1 {
+  font-size: 16px;
+}
+.wl-root .md-body h2 {
+  font-size: 15px;
+}
+.wl-root .md-body h3 {
+  font-size: 14px;
+}
+.wl-root .md-body ul {
+  list-style: disc;
+  padding-left: 1.4em;
+  margin: 2px 0;
+}
+.wl-root .md-body ol {
+  list-style: decimal;
+  padding-left: 1.4em;
+  margin: 2px 0;
+}
+.wl-root .md-body code {
+  background: #eef1f5;
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: 12px;
+  font-family: Consolas, "Courier New", monospace;
+}
+.wl-root .md-body pre {
+  background: #f6f8fa;
+  border: 1px solid #e5e7eb;
+  padding: 8px 10px;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 4px 0;
+}
+.wl-root .md-body pre code {
+  background: transparent;
+  padding: 0;
+  font-size: 12px;
+}
+.wl-root .md-body a {
+  color: #2563eb;
+  text-decoration: underline;
+}
+.wl-root .md-body blockquote {
+  border-left: 3px solid #d1d5db;
+  padding-left: 8px;
+  color: #6b7280;
+  margin: 4px 0;
+}
+.wl-root .md-body table {
+  border-collapse: collapse;
+  margin: 4px 0;
+}
+.wl-root .md-body th,
+.wl-root .md-body td {
+  border: 1px solid #e5e7eb;
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+/* 滚动条 */
+.wl-root ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.wl-root .wl-root ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+.wl-root .wl-root .wl-root ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+.wl-root .wl-root ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 动效：页面切换 / 弹窗 / 下拉 */
+@keyframes wl-page-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes wl-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes wl-card-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+@keyframes wl-slide-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+@keyframes wl-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.wl-page {
+  animation: wl-page-in 0.18s ease-out;
+}
+.wl-fade {
+  animation: wl-fade-in 0.15s ease-out;
+}
+.wl-card {
+  animation: wl-card-in 0.16s ease-out;
+}
+.wl-slide {
+  animation: wl-slide-in 0.2s ease-out;
+}
+.wl-pop {
+  animation: wl-pop-in 0.14s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wl-page,
+  .wl-fade,
+  .wl-card,
+  .wl-slide,
+  .wl-pop {
+    animation: none;
+  }
+}
+
+/* 工作台外壳（加载/错误态）——NoteVault 集成新增，不影响原 UI */
+.wl-boot {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 13px;
+  gap: 10px;
+}
+html.dark .wl-root .wl-boot {
+  background: #0f172a;
+  color: #cbd5e1;
+}
+.wl-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(148, 163, 184, 0.4);
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: wl-spin 0.8s linear infinite;
+  margin-right: 8px;
+  vertical-align: -3px;
+}
+@keyframes wl-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.wl-boot-err {
+  max-width: 520px;
+  padding: 20px 24px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  line-height: 1.7;
+}
+html.dark .wl-root .wl-boot-err {
+  background: #1b263a;
+  border-color: #3a4b66;
+}
+.wl-boot-err b {
+  color: #b91c1c;
+}
+.wl-boot-hint {
+  color: #64748b;
+  font-size: 12px;
+}
+.wl-boot-retry {
+  margin-top: 8px;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 6px;
+  background: #2563eb;
+  color: #fff;
+  cursor: pointer;
+}
+
+/* 作为 NoteVault 工作台挂载时铺满内容区 */
+.content-col.wl-root {
+  height: auto;
+  overflow: hidden;
+}

@@ -18,6 +18,10 @@ const DiffWorkbench = lazy(() =>
 const PwWorkbench = lazy(() =>
   import("./components/pw/PwWorkbench").then((m) => ({ default: m.PwWorkbench }))
 );
+/** 工作日志工作台（Worklog 接入：sql.js 与页面均按需加载） */
+const WorklogWorkbench = lazy(() =>
+  import("./worklog/WorklogWorkbench").then((m) => ({ default: m.WorklogWorkbench }))
+);
 
 export default function App() {
   const init = useVault((s) => s.init);
@@ -91,7 +95,7 @@ export default function App() {
     };
   }, [autoRefresh, hasVault]);
 
-  // 全局快捷键
+  // 全局快捷键（仅读取工作台生效；对比/密码/工作日志工作台有自己的快捷键与弹窗）
   useEffect(() => {
     const onKey = async (e: KeyboardEvent) => {
       const ui = useUi.getState();
@@ -102,6 +106,7 @@ export default function App() {
         else if (ui.vaultMenuOpen) ui.setVaultMenuOpen(false);
         return;
       }
+      if (ui.workbench !== "read") return;
       if (!mod) {
         if (e.key === "F5") {
           e.preventDefault();
@@ -163,6 +168,18 @@ export default function App() {
             }
           >
             <PwWorkbench />
+          </Suspense>
+        ) : workbench === "worklog" ? (
+          <Suspense
+            fallback={
+              <div className="content-col">
+                <div className="diff-empty">
+                  <span className="spinner" /> 正在加载工作日志…
+                </div>
+              </div>
+            }
+          >
+            <WorklogWorkbench />
           </Suspense>
         ) : (
           <Suspense

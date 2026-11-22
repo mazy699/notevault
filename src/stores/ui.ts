@@ -1,8 +1,8 @@
 import { create } from "zustand";
 
 export type SidebarTab = "files" | "search" | "recents";
-/** 工作台：读取（笔记浏览）/ 对比（Diff）/ 密码（凭证管理）——后续新功能即新增工作台 */
-export type Workbench = "read" | "diff" | "pw";
+/** 工作台：读取（笔记浏览）/ 对比（Diff）/ 密码（凭证管理）/ 工作日志（Worklog）——后续新功能即新增工作台 */
+export type Workbench = "read" | "diff" | "pw" | "worklog";
 
 interface UiState {
   theme: "dark" | "light";

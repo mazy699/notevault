@@ -77,7 +77,7 @@ pub fn dispatch(app: &tauri::AppHandle, cmd: &str, payload: &Value) -> Result<Va
     };
     let p = payload.clone();
     match cmd {
-        "__ping" => Ok(json!({ "ok": true, "host": "tauri", "version": "0.6.1" })),
+        "__ping" => Ok(json!({ "ok": true, "host": "tauri", "version": "0.7.0" })),
 
         "vault_info" => vault_info(&state, p.get("path").and_then(|v| v.as_str())),
 
@@ -475,8 +475,102 @@ pub fn dispatch(app: &tauri::AppHandle, cmd: &str, payload: &Value) -> Result<Va
             Ok(json!({ "ok": true, "path": path }))
         }
 
+        // ---------------- Worklog 工作台：整库文件读写（与独立 Worklog 共用 %APPDATA%/worklog） ----------------
+        "wl_db_load" => {
+            let dir = crate::wlstore::worklog_data_dir();
+            let bytes = crate::wlstore::load_db(&dir)?;
+            let b64 = bytes.map(|b| {
+                use base64::Engine;
+                base64::engine::general_purpose::STANDARD.encode(b)
+            });
+            Ok(json!({
+                "dataDir": dir.display().to_string(),
+                "dbFile": crate::wlstore::db_file(&dir).display().to_string(),
+                "b64": b64,
+            }))
+        }
+        "wl_db_save" => {
+            let dir = crate::wlstore::worklog_data_dir();
+            let bytes = decode_b64(p.get("b64").and_then(|v| v.as_str()).unwrap_or(""))?;
+            crate::wlstore::save_db(&dir, &bytes)?;
+            Ok(json!({ "ok": true }))
+        }
+        "wl_aux_read" => {
+            let dir = crate::wlstore::worklog_data_dir();
+            let name = p.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            let text = crate::wlstore::aux_read(&dir, name)?;
+            Ok(json!({ "text": text }))
+        }
+        "wl_aux_write" => {
+            let dir = crate::wlstore::worklog_data_dir();
+            let name = p.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            let text = p.get("text").and_then(|v| v.as_str()).unwrap_or("");
+            crate::wlstore::aux_write(&dir, name, text)?;
+            Ok(json!({ "ok": true }))
+        }
+        "wl_backup" => {
+            let dir = crate::wlstore::worklog_data_dir();
+            let bytes = decode_b64(p.get("b64").and_then(|v| v.as_str()).unwrap_or(""))?;
+            let path = crate::wlstore::backup(&dir, &bytes)?;
+            Ok(json!({ "path": path.display().to_string() }))
+        }
+        "wl_data_info" => {
+            let dir = crate::wlstore::worklog_data_dir();
+            let (data_dir, db_file) = crate::wlstore::info(&dir);
+            Ok(json!({ "dataDir": data_dir, "dbFile": db_file }))
+        }
+        "wl_ai_proxy" => {
+            let url = p.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            if !(url.starts_with("http://") || url.starts_with("https://")) {
+                return Err("AI 代理仅支持 http(s) 地址".into());
+            }
+            let method = p
+                .get("method")
+                .and_then(|v| v.as_str())
+                .unwrap_or("POST")
+                .to_uppercase();
+            let headers = p.get("headers").and_then(|v| v.as_object()).cloned().unwrap_or_default();
+            let body = p.get("body").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let agent = ureq::AgentBuilder::new()
+                .timeout(std::time::Duration::from_secs(90))
+                .build();
+            let mut req = agent.request(&method, &url);
+            for (k, v) in headers.iter() {
+                if let Some(vs) = v.as_str() {
+                    req = req.set(k, vs);
+                }
+            }
+            let result = match body {
+                Some(b) => req.send_string(&b),
+                None => req.call(),
+            };
+            let (status, text) = match result {
+                Ok(resp) => {
+                    let status = resp.status();
+                    let text = resp.into_string().map_err(|e| format!("读取响应失败：{e}"))?;
+                    (status, text)
+                }
+                Err(ureq::Error::Status(code, resp)) => (code, resp.into_string().unwrap_or_default()),
+                Err(e) => return Err(format!("网络错误：{e}")),
+            };
+            let cap = 2 * 1024 * 1024;
+            let trimmed = if text.len() > cap {
+                text[..text.floor_char_boundary(cap)].to_string()
+            } else {
+                text
+            };
+            Ok(json!({ "status": status, "body": trimmed }))
+        }
+
         _ => Err(format!("未知命令: {}", cmd)),
     }
+}
+
+fn decode_b64(s: &str) -> Result<Vec<u8>, String> {
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD
+        .decode(s)
+        .map_err(|e| format!("base64 解码失败：{e}"))
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -545,3 +639,4 @@ pub async fn api(app: tauri::AppHandle, cmd: String, payload: Value) -> Result<V
         .await
         .map_err(|e| format!("任务执行失败: {}", e))?
 }
+

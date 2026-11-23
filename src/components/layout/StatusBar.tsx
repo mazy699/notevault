@@ -3,7 +3,8 @@ import { FolderOpen, Moon, Sun } from "lucide-react";
 import { useUi } from "../../stores/ui";
 import { useVault } from "../../stores/vault";
 import { useTabs } from "../../stores/tabs";
-import { formatBytes, formatTime, countLines } from "../../lib/format";
+import { formatBytes, formatTime, countLines, joinAbsPath } from "../../lib/format";
+import { copyText } from "../viewer/FileBar";
 
 export function StatusBar() {
   const { theme, toggleTheme } = useUi();
@@ -12,6 +13,11 @@ export function StatusBar() {
   const tab = tabs.find((t) => t.path === active);
   const fc = tab ? content[tab.path] : null;
   const [flash, setFlash] = useState<string | null>(null);
+
+  const showFlash = (message: string) => {
+    setFlash(message);
+    setTimeout(() => setFlash(null), 1600);
+  };
 
   useEffect(() => {
     const onFlash = (e: Event) => {
@@ -22,13 +28,16 @@ export function StatusBar() {
     return () => window.removeEventListener("nv-flash-refresh", onFlash);
   }, []);
 
+  const copyTo = async (text: string, label: string) => {
+    const ok = await copyText(text);
+    showFlash(ok ? `已复制${label}` : "复制失败");
+  };
+
+  const absFile = tab && info ? joinAbsPath(info.path, tab.path) : "";
+
   return (
     <div className="statusbar">
-      <span
-        className="clickable"
-        title="点击复制笔记库路径"
-        onClick={() => void navigator.clipboard.writeText(info?.path ?? "")}
-      >
+      <span className="clickable" title="点击复制笔记库路径" onClick={() => void copyTo(info?.path ?? "", "笔记库路径")}>
         <FolderOpen size={12} style={{ verticalAlign: -2, marginRight: 4 }} />
         {info?.path ?? "未选择笔记库"}
       </span>
@@ -36,7 +45,13 @@ export function StatusBar() {
       <span className="spacer" />
       {tab && (
         <>
-          <span title={tab.path}>{tab.path}</span>
+          <span
+            className="clickable"
+            title={`点击复制完整路径：${absFile}`}
+            onClick={() => void copyTo(absFile, "完整路径")}
+          >
+            {tab.path}
+          </span>
           <span>{formatBytes(fc?.size ?? tab.size)}</span>
           {fc?.mtimeMs ? <span>修改 {formatTime(fc.mtimeMs)}</span> : null}
           {fc && <span>{countLines(fc.content)} 行</span>}

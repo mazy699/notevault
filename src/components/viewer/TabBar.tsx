@@ -1,9 +1,13 @@
 import { X } from "lucide-react";
 import { useTabs } from "../../stores/tabs";
+import { useVault } from "../../stores/vault";
 import { KindIcon } from "../common/KindIcon";
+import { openFileCopyMenu } from "../common/FileCopyMenu";
+import { joinAbsPath } from "../../lib/format";
 
 export function TabBar() {
   const { tabs, active, setActive, closeTab, closeOthers } = useTabs();
+  const vaultPath = useVault((s) => s.info?.path ?? "");
   if (tabs.length === 0) return null;
   return (
     <div className="tabbar">
@@ -17,27 +21,13 @@ export function TabBar() {
           }}
           onContextMenu={(e) => {
             e.preventDefault();
-            // 简易右键菜单：关闭其他
-            const menu = document.createElement("div");
-            menu.className = "dropdown";
-            menu.style.top = `${e.clientY + 2}px`;
-            menu.style.left = `${e.clientX}px`;
-            menu.innerHTML = `
-              <button class="item" data-act="close">关闭标签</button>
-              <button class="item" data-act="others">关闭其他标签</button>
-              <button class="item" data-act="copy">复制文件路径</button>`;
-            document.body.appendChild(menu);
-            const onDown = (ev: MouseEvent) => {
-              const el = (ev.target as HTMLElement).closest("[data-act]") as HTMLElement | null;
-              if (el) {
-                if (el.dataset.act === "close") closeTab(t.path);
-                if (el.dataset.act === "others") closeOthers(t.path);
-                if (el.dataset.act === "copy") void navigator.clipboard.writeText(t.path);
-              }
-              menu.remove();
-              document.removeEventListener("mousedown", onDown);
-            };
-            setTimeout(() => document.addEventListener("mousedown", onDown), 0);
+            openFileCopyMenu(e.clientX, e.clientY, {
+              name: t.name,
+              relPath: t.path,
+              absPath: joinAbsPath(vaultPath, t.path),
+              onClose: () => closeTab(t.path),
+              onCloseOthers: () => closeOthers(t.path),
+            });
           }}
           title={t.path}
         >

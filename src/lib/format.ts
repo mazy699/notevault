@@ -37,3 +37,18 @@ export function splitByQuery(text: string, query: string): Array<{ part: string;
   if (pos < text.length) out.push({ part: text.slice(pos), hit: false });
   return out;
 }
+
+/**
+ * 拼接笔记库绝对路径与库内相对路径（自动适配分隔符）。
+ * 例：joinAbsPath("D:\notes", "docs/a.md") → "D:\notes\docs\a.md"
+ *     joinAbsPath("/home/u/notes", "docs/a.md") → "/home/u/notes/docs/a.md"
+ * 基路径末尾的分隔符会被归一（不产生双斜杠）。
+ */
+export function joinAbsPath(base: string, rel: string): string {
+  if (!base) return rel;
+  const sep = base.includes("\\") ? "\\" : "/";
+  const trimmed = base.replace(/[\\/]+$/, "");
+  const relNative =
+    sep === "\\" ? rel.replace(/\//g, "\\") : rel.replace(/\\/g, "/");
+  return `${trimmed}${sep}${relNative.replace(/^[\\/]+/, "")}`;
+}

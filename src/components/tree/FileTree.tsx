@@ -4,6 +4,8 @@ import { useVault } from "../../stores/vault";
 import { useTabs } from "../../stores/tabs";
 import { KindIcon, FolderIcon } from "../common/KindIcon";
 import { ChevronRight } from "lucide-react";
+import { openFileCopyMenu } from "../common/FileCopyMenu";
+import { joinAbsPath } from "../../lib/format";
 
 /** 按名称过滤树：保留命中文件与它们的所有祖先；返回 null 表示整棵剪掉 */
 function prune(node: FileNode, q: string): FileNode | null {
@@ -22,6 +24,7 @@ function prune(node: FileNode, q: string): FileNode | null {
 function TreeRows({ node, depth, filter }: { node: FileNode; depth: number; filter: string }) {
   const { expanded, toggleDir } = useVault();
   const { active, openFile } = useTabs();
+  const vaultPath = useVault((s) => s.info?.path ?? "");
 
   if (!node.dir) {
     return (
@@ -31,6 +34,14 @@ function TreeRows({ node, depth, filter }: { node: FileNode; depth: number; filt
         onClick={() =>
           openFile({ path: node.path, name: node.name, kind: node.kind, size: node.size, mtimeMs: node.mtimeMs })
         }
+        onContextMenu={(e) => {
+          e.preventDefault();
+          openFileCopyMenu(e.clientX, e.clientY, {
+            name: node.name,
+            relPath: node.path,
+            absPath: joinAbsPath(vaultPath, node.path),
+          });
+        }}
         title={node.path}
       >
         <KindIcon kind={node.kind} />
@@ -50,6 +61,15 @@ function TreeRows({ node, depth, filter }: { node: FileNode; depth: number; filt
         className="tree-row"
         style={{ paddingLeft: 8 + depth * 14 }}
         onClick={() => toggleDir(node.path)}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          openFileCopyMenu(e.clientX, e.clientY, {
+            name: node.name,
+            relPath: node.path,
+            absPath: joinAbsPath(vaultPath, node.path),
+            dir: true,
+          });
+        }}
         title={node.path}
       >
         <span className={`chevron${isOpen ? " open" : ""}`}>

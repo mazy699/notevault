@@ -316,6 +316,25 @@ body {
   font-weight: 600;
   letter-spacing: 0.4px;
 }
+/* 文件复制菜单（Issue #2）：右侧灰色路径预览，超长省略 */
+.file-copy-menu {
+  min-width: 340px;
+  max-width: 460px;
+}
+.file-copy-menu .item {
+  min-width: 0;
+}
+.file-copy-hint {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  color: var(--text-faint);
+  font-size: 11.5px;
+  font-family: var(--font-mono);
+}
 .dropdown input[type="text"] {
   width: 100%;
   box-sizing: border-box;

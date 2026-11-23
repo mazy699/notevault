@@ -8,7 +8,8 @@ import { useTabs } from "../../stores/tabs";
 import { api, fileUrl } from "../../api/client";
 import { FileTree } from "../tree/FileTree";
 import { KindIcon } from "../common/KindIcon";
-import { splitByQuery } from "../../lib/format";
+import { openFileCopyMenu } from "../common/FileCopyMenu";
+import { splitByQuery, joinAbsPath } from "../../lib/format";
 import { locateTextInContent } from "../../lib/locate";
 import { findInTree } from "../../lib/links";
 
@@ -48,6 +49,7 @@ function FilesPage() {
 export function RecentsPage() {
   const recents = useTabs((s) => s.recents);
   const tree = useVault((s) => s.tree);
+  const vaultPath = useVault((s) => s.info?.path ?? "");
 
   // 从树中查出文件元数据以拿到 kind/size
   const byPath = useMemo(() => {
@@ -87,6 +89,14 @@ export function RecentsPage() {
                   mtimeMs: meta.mtimeMs,
                 })
               }
+              onContextMenu={(e) => {
+                e.preventDefault();
+                openFileCopyMenu(e.clientX, e.clientY, {
+                  name: meta.name,
+                  relPath: meta.path,
+                  absPath: joinAbsPath(vaultPath, meta.path),
+                });
+              }}
               title={p}
             >
               <KindIcon kind={meta.kind} />
@@ -107,6 +117,7 @@ function SearchPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const seqRef = useRef(0);
+  const vaultPath = useVault((s) => s.info?.path ?? "");
 
   const doSearch = async (q: string, cs: boolean) => {
     const seq = ++seqRef.current;
@@ -192,7 +203,19 @@ function SearchPage() {
       <div className="search-results">
         {result?.hits.map((hit) => (
           <div className="search-file" key={hit.path}>
-            <div className="sf-head" onClick={() => openHit(hit, hit.matches[0])} title={hit.path}>
+            <div
+              className="sf-head"
+              onClick={() => openHit(hit, hit.matches[0])}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                openFileCopyMenu(e.clientX, e.clientY, {
+                  name: hit.name,
+                  relPath: hit.path,
+                  absPath: joinAbsPath(vaultPath, hit.path),
+                });
+              }}
+              title={hit.path}
+            >
               <KindIcon kind={hit.kind} />
               <span className="sf-name">{hit.name}</span>
               <span className="sf-path">{hit.path}</span>

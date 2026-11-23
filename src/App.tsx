@@ -6,6 +6,7 @@ import { StatusBar } from "./components/layout/StatusBar";
 import { TabBar } from "./components/viewer/TabBar";
 import { Viewer } from "./components/viewer/Viewer";
 import { QuickOpen } from "./components/search/QuickOpen";
+import { FileCopyMenu } from "./components/common/FileCopyMenu";
 import { useVault } from "./stores/vault";
 import { useUi } from "./stores/ui";
 import { loadRecents, useTabs } from "./stores/tabs";
@@ -197,6 +198,7 @@ export default function App() {
       </div>
       <StatusBar />
       <QuickOpen />
+      <FileCopyMenu />
     </div>
   );
 }

@@ -4,6 +4,8 @@ import { api, isTauri } from "../../api/client";
 import { useTabs } from "../../stores/tabs";
 import { useVault } from "../../stores/vault";
 import { useUi } from "../../stores/ui";
+import { openFileCopyMenu } from "../common/FileCopyMenu";
+import { joinAbsPath } from "../../lib/format";
 
 async function copyText(text: string): Promise<boolean> {
   try {
@@ -103,10 +105,24 @@ export function FileBar() {
         </span>
       )}
 
-      <span className="filepath" title={`${info?.path ?? ""}\\${tab.path}`}>
+      <span className="filepath" title={joinAbsPath(info?.path ?? "", tab.path)}>
         {tab.path}
       </span>
 
+      <button
+        className="icon-btn"
+        title="复制文件名 / 路径…"
+        onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          openFileCopyMenu(r.left, r.bottom + 4, {
+            name: tab.name,
+            relPath: tab.path,
+            absPath: joinAbsPath(info?.path ?? "", tab.path),
+          });
+        }}
+      >
+        <Copy size={14} />
+      </button>
       <CopyButton text={raw} label="复制源码" className={`icon-btn labeled${raw ? "" : ""}`} />
       {tab.kind === "markdown" && mode === "render" && (
         <button

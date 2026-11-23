@@ -120,6 +120,7 @@ export const COMMANDS = [
   "git_ls",
   "git_log",
   "git_show",
+  "git_branch",
   "settings_get",
   "settings_set",
   "reveal_in_explorer",
@@ -179,4 +180,16 @@ export interface GitCommit {
   subject: string;
   author: string;
   date: string;
+}
+
+/** git_branch：给定目录（或文件所在目录）的仓库与分支信息 */
+export interface GitBranchInfo {
+  /** 是否位于 Git 工作区内 */
+  inRepo: boolean;
+  /** 当前分支名（分离头指针时为 "HEAD"） */
+  branch: string | null;
+  /** 分离头指针（branch 为 "HEAD"） */
+  detached?: boolean;
+  /** 仓库根目录（可选返回） */
+  root?: string | null;
 }

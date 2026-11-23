@@ -126,6 +126,14 @@ pub fn run() {
         }
         Err(e) => check!(format!("git_log_failed: {}", e).as_str(), false),
     }
+    // 状态栏分支解析（git_branch 的核心调用）
+    match crate::api::git_run(&["rev-parse", "--abbrev-ref", "HEAD"], &gdir) {
+        Ok(out) => {
+            let name = out.trim();
+            check!("git_branch_resolve", !name.is_empty() && name != "HEAD");
+        }
+        Err(_) => check!("git_branch_resolve", false),
+    }
     let _ = std::fs::remove_dir_all(&gdir);
 
     // ---------------- 密码工作台：pwstore + pwcrypto（独立临时文件，不碰真实用户库） ----------------

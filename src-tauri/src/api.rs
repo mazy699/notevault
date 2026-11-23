@@ -315,6 +315,29 @@ pub fn dispatch(app: &tauri::AppHandle, cmd: &str, payload: &Value) -> Result<Va
             Ok(json!({ "entries": list }))
         }
 
+        "git_branch" => {
+            // 状态栏：目录（或文件所在目录）是否在 Git 仓库内，以及当前分支
+            let dir = PathBuf::from(p.get("path").and_then(|v| v.as_str()).unwrap_or(""));
+            if !dir.is_dir() {
+                return Ok(json!({ "inRepo": false, "branch": null }));
+            }
+            match git_run(&["rev-parse", "--abbrev-ref", "HEAD"], &dir) {
+                Ok(out) => {
+                    let branch = out.trim().to_string();
+                    if branch.is_empty() {
+                        Ok(json!({ "inRepo": false, "branch": null }))
+                    } else {
+                        Ok(json!({
+                            "inRepo": true,
+                            "branch": branch,
+                            "detached": branch == "HEAD",
+                        }))
+                    }
+                }
+                Err(_) => Ok(json!({ "inRepo": false, "branch": null })),
+            }
+        }
+
         "git_ls" => {
             let repo = PathBuf::from(p.get("repoPath").and_then(|v| v.as_str()).unwrap_or(""));
             if !repo.is_dir() {

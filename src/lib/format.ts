@@ -52,3 +52,10 @@ export function joinAbsPath(base: string, rel: string): string {
     sep === "\\" ? rel.replace(/\//g, "\\") : rel.replace(/\\/g, "/");
   return `${trimmed}${sep}${relNative.replace(/^[\\/]+/, "")}`;
 }
+
+/** 取绝对路径的父目录（Windows/POSIX 通用）；无分隔符时原样返回 */
+export function parentDir(absPath: string): string {
+  const i = Math.max(absPath.lastIndexOf("\\"), absPath.lastIndexOf("/"));
+  if (i <= 0) return absPath;
+  return absPath.slice(0, i);
+}

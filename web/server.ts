@@ -451,6 +451,18 @@ const routes: Record<string, (payload: Record<string, unknown>) => unknown> = {
       .filter((c) => c.hash !== "");
     return { commits };
   },
+  git_branch: (p) => {
+    // 状态栏：目录（或文件所在目录）是否在 Git 仓库内，以及当前分支
+    const raw = String(p.path ?? "");
+    if (!raw) return { inRepo: false, branch: null };
+    const dir = path.resolve(raw);
+    if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) return { inRepo: false, branch: null };
+    const r = runGit(["rev-parse", "--abbrev-ref", "HEAD"], dir);
+    if (!r.ok) return { inRepo: false, branch: null };
+    const branch = r.stdout.trim();
+    if (!branch) return { inRepo: false, branch: null };
+    return { inRepo: true, branch, detached: branch === "HEAD" };
+  },
   git_show: (p) => {
     const abs = requireAbsDir(String(p.repoPath ?? ""));
     const file = String(p.filePath ?? "");

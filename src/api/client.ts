@@ -1,7 +1,7 @@
 /**
  * 宿主适配层：同一套 call(cmd, payload) 契约自动路由到 Tauri invoke 或 HTTP API。
  */
-import type { FileContent, FileNode, PwDb, SearchResult, Snapshot, VaultInfo } from "../../shared/types";
+import type { FileContent, FileNode, GitBranchInfo, PwDb, SearchResult, Snapshot, VaultInfo } from "../../shared/types";
 
 export function isTauri(): boolean {
   return typeof window !== "undefined" && !!window.__TAURI_INTERNALS__;
@@ -56,6 +56,8 @@ export const api = {
   /** Diff：读取某文件在指定版本的内容（ref=提交 hash 或 "WORKDIR"） */
   gitShow: (repoPath: string, filePath: string, ref: string) =>
     call<FileContent>("git_show", { repoPath, filePath, ref }),
+  /** 状态栏：查询目录所在仓库的当前分支（非仓库返回 inRepo:false） */
+  gitBranch: (path: string) => call<GitBranchInfo>("git_branch", { path }),
   /** 密码库：加载（加密库需主密码；db=null 表示需解锁/密码错误） */
   pwLoad: (masterPassword?: string) =>
     call<{ encrypted: boolean; db: PwDb | null; wrongPassword?: boolean }>("pw_load", { masterPassword }),

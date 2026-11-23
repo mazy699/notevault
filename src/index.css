@@ -730,6 +730,48 @@ body {
 .statusbar .clickable:hover {
   color: var(--text-secondary);
 }
+/* 图标 + 文本单行布局：图标作为 flex 子项垂直居中，长路径省略而不是换行 */
+.statusbar .status-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  white-space: nowrap;
+}
+.statusbar .status-item svg {
+  flex: none;
+}
+.statusbar .status-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.statusbar .status-vault {
+  flex: 0 1 auto;
+  max-width: 36vw;
+}
+.statusbar .status-file {
+  flex: 0 1 auto;
+  max-width: 44vw;
+}
+.statusbar .status-meta {
+  flex: none;
+  white-space: nowrap;
+}
+/* Git 分支徽标（Issue：当前仓库分支） */
+.statusbar .git-branch {
+  flex: none;
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-weight: 500;
+}
+.statusbar .git-branch:hover {
+  color: var(--accent-strong);
+  background: color-mix(in srgb, var(--accent) 18%, var(--bg-panel));
+}
 .statusbar .flash {
   color: var(--accent-text);
 }

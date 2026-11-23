@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { joinAbsPath } from "./format";
+import { joinAbsPath, parentDir } from "./format";
 
 describe("joinAbsPath（文件完整路径拼接）", () => {
   it("Windows 路径：斜杠统一为反斜杠且不产生双分隔", () => {
@@ -19,5 +19,13 @@ describe("joinAbsPath（文件完整路径拼接）", () => {
 
   it("空基路径原样返回相对路径", () => {
     expect(joinAbsPath("", "a/b.md")).toBe("a/b.md");
+  });
+});
+
+describe("parentDir（取父目录）", () => {
+  it("Windows / POSIX / 无分隔符", () => {
+    expect(parentDir("D:\\notes\\docs\\a.md")).toBe("D:\\notes\\docs");
+    expect(parentDir("/home/u/notes/a.md")).toBe("/home/u/notes");
+    expect(parentDir("a.md")).toBe("a.md");
   });
 });

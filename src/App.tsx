@@ -7,6 +7,7 @@ import { TabBar } from "./components/viewer/TabBar";
 import { Viewer } from "./components/viewer/Viewer";
 import { QuickOpen } from "./components/search/QuickOpen";
 import { FileCopyMenu } from "./components/common/FileCopyMenu";
+import { usePwAutoLock } from "./hooks/usePwAutoLock";
 import { useVault } from "./stores/vault";
 import { useUi } from "./stores/ui";
 import { loadRecents, useTabs } from "./stores/tabs";
@@ -30,6 +31,8 @@ export default function App() {
   const workbench = useUi((s) => s.workbench);
   const hasVault = useVault((s) => !!s.info);
   const lastSnapshot = useRef<Record<string, { mtimeMs: number; size: number }> | null>(null);
+  // 密码库自动上锁（全局计时，切换工作台期间同样生效）
+  usePwAutoLock();
 
   useEffect(() => {
     void init();

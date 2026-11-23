@@ -9,11 +9,13 @@ import {
   History as HistoryIcon,
   KeyRound,
   Lock,
+  LockKeyhole,
   LockOpen,
   Pencil,
   Plus,
   Search,
   ShieldCheck,
+  Timer,
   Trash2,
   Upload,
   Wand2,
@@ -198,6 +200,17 @@ export function PwWorkbench() {
             </div>
           )}
         </div>
+        <AutoLockControl />
+        {pw.encrypted && pw.unlocked && (
+          <button
+            className="icon-btn labeled"
+            title="立即上锁（清除会话主密码，需重新解锁才能查看密码库）"
+            onClick={() => pw.lock()}
+          >
+            <LockKeyhole size={15} />
+            上锁
+          </button>
+        )}
         <button
           className="icon-btn labeled"
           title={locked ? "请先解锁密码库" : "主密码：加密 / 更改 / 移除"}
@@ -321,6 +334,42 @@ function UnlockCard({ wrong, onUnlock }: { wrong: boolean; onUnlock: (master: st
   );
 }
 
+/** 自动上锁设置（Issue #4）：分钟数（0 = 关闭），回车/失焦保存 */
+function AutoLockControl() {
+  const minutes = usePw((s) => s.autoLockMinutes);
+  const setMinutes = usePw((s) => s.setAutoLockMinutes);
+  const [draft, setDraft] = useState(String(minutes));
+  useEffect(() => setDraft(String(minutes)), [minutes]);
+  const commit = () => {
+    const n = Number(draft.trim() === "" ? 0 : draft);
+    if (!Number.isFinite(n)) {
+      setDraft(String(minutes));
+      return;
+    }
+    void setMinutes(n);
+  };
+  return (
+    <label className="pw-autolock" title="无操作超过设定分钟数后自动上锁（0 = 关闭）">
+      <Timer size={14} />
+      <input
+        type="number"
+        min={0}
+        max={1440}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            commit();
+            (e.target as HTMLInputElement).blur();
+          }
+        }}
+      />
+      <span>分钟自动上锁</span>
+    </label>
+  );
+}
+
 /** 主密码弹窗：设置 / 更改 / 移除 */
 function MasterModal({ onClose }: { onClose: () => void }) {
   const pw = usePw();
@@ -337,10 +386,7 @@ function MasterModal({ onClose }: { onClose: () => void }) {
       setErr("两次输入不一致");
       return;
     }
-    if (newPw.length > 0 && newPw.length < 8) {
-      setErr("主密码建议至少 8 位");
-      return;
-    }
+    // 主密码不限制长度（Issue #4）：任意非空即可，强度由用户自行把握
     try {
       await pw.setMasterPassword(newPw.length > 0 ? newPw : null);
       setDone(newPw.length > 0 ? "已加密保存" : "已移除主密码，转为明文保存");
@@ -379,7 +425,7 @@ function MasterModal({ onClose }: { onClose: () => void }) {
               主密码用于整库加密（AES-256-GCM + scrypt），仅保存在本会话内存中。
               {currentSet ? "输入新主密码将立即用新密码重新加密写盘。" : "设置后每次打开需先解锁。留空并确认可移除主密码（转明文）。"}
             </p>
-            <input type="password" placeholder="新主密码（≥8 位）" value={newPw} onChange={(e) => setNewPw(e.target.value)} autoFocus />
+            <input type="password" placeholder="新主密码（任意长度）" value={newPw} onChange={(e) => setNewPw(e.target.value)} autoFocus />
             <input type="password" placeholder="确认新主密码" value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void submit()} />
             {err && <div className="pw-err">{err}</div>}
             <div className="pw-modal-actions">

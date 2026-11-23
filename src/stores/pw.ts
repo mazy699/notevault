@@ -6,6 +6,7 @@ import { create } from "zustand";
 import { api } from "../api/client";
 import type { PwDb, PwEntry } from "../../shared/types";
 import { emptyDb, mergeEntries, newEntry } from "../lib/pwexport";
+import { AUTOLOCK_SETTING_KEY, DEFAULT_AUTOLOCK_MINUTES, parseAutoLockMinutes } from "../lib/autolock";
 
 interface PwState {
   /** 首次 load 完成 */
@@ -23,10 +24,16 @@ interface PwState {
   error: string | null;
   /** 载入/保存中 */
   busy: boolean;
+  /** 自动上锁分钟数（0 = 关闭，默认 30） */
+  autoLockMinutes: number;
 
   load: (master?: string) => Promise<void>;
   unlock: (master: string) => Promise<boolean>;
   persist: () => Promise<void>;
+  /** 立即上锁：清除会话主密码与内存明文（磁盘加密库不受影响） */
+  lock: () => void;
+  /** 设置自动上锁分钟数（0 = 关闭），持久化到本地设置 */
+  setAutoLockMinutes: (minutes: number) => Promise<void>;
   addEntry: (partial: Partial<PwEntry>) => Promise<PwEntry>;
   updateEntry: (entry: PwEntry) => Promise<void>;
   /** 更换密码：旧密码入历史 */
@@ -45,11 +52,16 @@ export const usePw = create<PwState>((set, get) => ({
   db: emptyDb(),
   error: null,
   busy: false,
+  autoLockMinutes: DEFAULT_AUTOLOCK_MINUTES,
 
   load: async (master?: string) => {
     set({ busy: true, error: null });
     try {
-      const r = await api.pwLoad(master);
+      const [r, rawMinutes] = await Promise.all([
+        api.pwLoad(master),
+        api.settingsGet(AUTOLOCK_SETTING_KEY).catch(() => null),
+      ]);
+      set({ autoLockMinutes: parseAutoLockMinutes(rawMinutes) });
       if (r.encrypted && !r.db) {
         set({
           loaded: true,
@@ -80,6 +92,28 @@ export const usePw = create<PwState>((set, get) => ({
   unlock: async (master: string) => {
     await get().load(master);
     return get().unlocked;
+  },
+
+  lock: () => {
+    const { encrypted, unlocked } = get();
+    // 仅加密且已解锁的库需要上锁；明文库无会话密钥可清
+    if (!encrypted || !unlocked) return;
+    set({
+      unlocked: false,
+      masterPassword: null,
+      wrongPassword: false,
+      db: emptyDb(),
+    });
+  },
+
+  setAutoLockMinutes: async (minutes) => {
+    const next = Math.max(0, Math.min(1440, Math.round(minutes)));
+    set({ autoLockMinutes: next });
+    try {
+      await api.settingsSet(AUTOLOCK_SETTING_KEY, String(next));
+    } catch {
+      /* 设置写盘失败不阻塞使用（仅本次会话生效） */
+    }
   },
 
   persist: async () => {

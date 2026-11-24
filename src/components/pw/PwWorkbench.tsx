@@ -6,6 +6,7 @@ import {
   Download,
   Eye,
   EyeOff,
+  GripVertical,
   History as HistoryIcon,
   KeyRound,
   Lock,
@@ -24,6 +25,7 @@ import {
 import { api, isTauri } from "../../api/client";
 import { usePw } from "../../stores/pw";
 import { buildCsv, buildJson, buildMd, parseImportText } from "../../lib/pwexport";
+import { sortPwEntries } from "../../lib/pworder";
 import { strengthInfo } from "../../lib/pwgen";
 import type { PwEntry } from "../../../shared/types";
 import { PwGenerator } from "./PwGenerator";
@@ -59,7 +61,7 @@ export function PwWorkbench() {
   const [masterModal, setMasterModal] = useState(false);
   const [exportMenu, setExportMenu] = useState(false);
   const [exportHistory, setExportHistory] = useState(true);
-  const [importState, setImportState] = useState<{ entries: PwEntry[]; format: string; fileName: string } | null>(null);
+  const [importState, setImportState] = useState<{ entries: PwEntry[]; format: string; fileName: string; order?: string[] } | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [importMode, setImportMode] = useState<"merge" | "replace">("merge");
   const fileRef = useRef<HTMLInputElement>(null);
@@ -83,7 +85,7 @@ export function PwWorkbench() {
     try {
       const text = await file.text();
       const r = parseImportText(text, file.name);
-      setImportState({ entries: r.entries, format: r.format, fileName: file.name });
+      setImportState({ entries: r.entries, format: r.format, fileName: file.name, order: r.order });
     } catch (e) {
       setImportError(e instanceof Error ? e.message : String(e));
     }
@@ -92,7 +94,7 @@ export function PwWorkbench() {
   const confirmImport = async () => {
     if (!importState) return;
     try {
-      const r = await pw.importEntries(importState.entries, importMode);
+      const r = await pw.importEntries(importState.entries, importMode, importState.order);
       setImportState(null);
       window.alert(`导入完成：新增 ${r.added} · 更新 ${r.updated} · 保留 ${r.skipped}`);
     } catch (e) {
@@ -103,7 +105,8 @@ export function PwWorkbench() {
 
   const doExport = async (fmt: "json" | "csv" | "md") => {
     setExportMenu(false);
-    const entries = pw.db.entries;
+    // CSV/MD 按当前显示顺序导出；JSON 保留 order 字段，便于迁移
+    const entries = sortPwEntries(pw.db.entries, pw.db.order);
     if (fmt === "json" && entries.length === 0) {
       window.alert("密码库为空，无可导出内容。");
       return;
@@ -462,20 +465,34 @@ function VaultView() {
     return [...set.entries()].sort((a, b) => b[1] - a[1]);
   }, [entries]);
 
+  const ordered = useMemo(() => sortPwEntries(entries, pw.db.order), [entries, pw.db.order]);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return entries
-      .filter((e) => (catFilter ? (e.category || "其他") === catFilter : true))
-      .filter((e) =>
-        q
-          ? e.title.toLowerCase().includes(q) ||
-            e.account.toLowerCase().includes(q) ||
-            (e.url ?? "").toLowerCase().includes(q) ||
-            (e.notes ?? "").toLowerCase().includes(q)
-          : true
-      )
-      .sort((a, b) => b.updatedAt - a.updatedAt);
-  }, [entries, query, catFilter]);
+    return ordered.filter((e) => (catFilter ? (e.category || "其他") === catFilter : true)).filter((e) =>
+      q
+        ? e.title.toLowerCase().includes(q) ||
+          e.account.toLowerCase().includes(q) ||
+          (e.url ?? "").toLowerCase().includes(q) ||
+          (e.notes ?? "").toLowerCase().includes(q)
+        : true
+    );
+  }, [ordered, query, catFilter]);
+
+  // 拖动排序（Issue #9）：搜索/分类过滤下顺序含义不明确，仅全量视图允许拖动
+  const canDrag = !query.trim() && catFilter === null;
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ id: string; after: boolean } | null>(null);
+  const suppressClick = useRef(false);
+  const finishDrag = () => {
+    setDragId(null);
+    setDropTarget(null);
+    // 拖动结束后可能补发 click：短暂抑制，避免误触选中/编辑
+    suppressClick.current = true;
+    window.setTimeout(() => {
+      suppressClick.current = false;
+    }, 150);
+  };
 
   const selected = entries.find((e) => e.id === selectedId) ?? filtered[0] ?? null;
 
@@ -565,13 +582,54 @@ function VaultView() {
             filtered.map((e) => (
               <button
                 key={e.id}
-                className={`pw-item${selected?.id === e.id ? " active" : ""}`}
+                draggable={canDrag}
+                onDragStart={(ev) => {
+                  if (!canDrag) {
+                    ev.preventDefault();
+                    return;
+                  }
+                  setDragId(e.id);
+                  ev.dataTransfer.effectAllowed = "move";
+                  ev.dataTransfer.setData("text/plain", e.id);
+                }}
+                onDragOver={(ev) => {
+                  if (!canDrag) return;
+                  ev.preventDefault();
+                  ev.dataTransfer.dropEffect = "move";
+                  const rect = ev.currentTarget.getBoundingClientRect();
+                  const after = ev.clientY > rect.top + rect.height / 2;
+                  setDropTarget((prev) =>
+                    prev && prev.id === e.id && prev.after === after ? prev : { id: e.id, after }
+                  );
+                }}
+                onDrop={(ev) => {
+                  ev.preventDefault();
+                  if (canDrag && dragId && dropTarget && dragId !== dropTarget.id) {
+                    void pw.moveEntry(dragId, dropTarget.id, dropTarget.after);
+                  }
+                  finishDrag();
+                }}
+                onDragEnd={finishDrag}
+                className={`pw-item${selected?.id === e.id ? " active" : ""}${
+                  dragId === e.id ? " dragging" : ""
+                }${
+                  dropTarget && dropTarget.id === e.id && dragId !== e.id
+                    ? dropTarget.after
+                      ? " drop-after"
+                      : " drop-before"
+                    : ""
+                }`}
+                title={canDrag ? "拖动可调整顺序（搜索/分类过滤时禁用）" : undefined}
                 onClick={() => {
+                  if (suppressClick.current) return;
                   setSelectedId(e.id);
                   setEditing(null);
                   setChangeOpen(false);
                 }}
               >
+                <span className="pw-item-grip" aria-hidden="true">
+                  <GripVertical size={13} />
+                </span>
                 <span className="pw-item-title">{e.title || e.account || "（未命名）"}</span>
                 <span className="pw-item-sub">
                   <span className="pw-item-cat">{e.category || "其他"}</span>

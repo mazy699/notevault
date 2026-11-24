@@ -7,6 +7,7 @@ import { api } from "../api/client";
 import type { PwDb, PwEntry } from "../../shared/types";
 import { emptyDb, mergeEntries, newEntry } from "../lib/pwexport";
 import { AUTOLOCK_SETTING_KEY, DEFAULT_AUTOLOCK_MINUTES, parseAutoLockMinutes } from "../lib/autolock";
+import { moveId, resolvedOrder } from "../lib/pworder";
 
 interface PwState {
   /** 首次 load 完成 */
@@ -39,7 +40,9 @@ interface PwState {
   /** 更换密码：旧密码入历史 */
   changePassword: (id: string, newPassword: string) => Promise<void>;
   removeEntry: (id: string) => Promise<void>;
-  importEntries: (incoming: PwEntry[], mode: "merge" | "replace") => Promise<{ added: number; updated: number; skipped: number }>;
+  importEntries: (incoming: PwEntry[], mode: "merge" | "replace", incomingOrder?: string[]) => Promise<{ added: number; updated: number; skipped: number }>;
+  /** 拖动排序（Issue #9）：把 fromId 移到 toId 之前/之后，写入 db.order 并持久化 */
+  moveEntry: (fromId: string, toId: string, after: boolean) => Promise<void>;
   setMasterPassword: (newMaster: string | null) => Promise<void>;
 }
 
@@ -128,7 +131,11 @@ export const usePw = create<PwState>((set, get) => ({
 
   addEntry: async (partial) => {
     const e = newEntry(partial);
-    set((s) => ({ db: { ...s.db, entries: [...s.db.entries, e], updatedAt: Date.now() } }));
+    set((s) => {
+      // 已有手动顺序：新条目插入最前；无手动顺序：保持 updatedAt 排序（新建自然在最前）
+      const order = s.db.order ? [e.id, ...resolvedOrder(s.db.entries, s.db.order)] : undefined;
+      return { db: { ...s.db, order, entries: [...s.db.entries, e], updatedAt: Date.now() } };
+    });
     await get().persist();
     return e;
   },
@@ -162,15 +169,45 @@ export const usePw = create<PwState>((set, get) => ({
   },
 
   removeEntry: async (id) => {
-    set((s) => ({ db: { ...s.db, entries: s.db.entries.filter((x) => x.id !== id), updatedAt: Date.now() } }));
+    set((s) => {
+      const order = s.db.order ? s.db.order.filter((x) => x !== id) : undefined;
+      return { db: { ...s.db, order, entries: s.db.entries.filter((x) => x.id !== id), updatedAt: Date.now() } };
+    });
     await get().persist();
   },
 
-  importEntries: async (incoming, mode) => {
-    const r = mergeEntries(get().db.entries, incoming, mode);
-    set((s) => ({ db: { ...s.db, entries: r.entries, updatedAt: Date.now() } }));
+  importEntries: async (incoming, mode, incomingOrder) => {
+    const current = get().db;
+    const r = mergeEntries(current.entries, incoming, mode);
+    let order: string[] | undefined;
+    if (mode === "replace") {
+      order = incomingOrder && incomingOrder.length > 0 ? resolvedOrder(r.entries, incomingOrder) : undefined;
+    } else {
+      const currentIds = resolvedOrder(current.entries, current.order);
+      const known = new Set(currentIds);
+      const added = r.entries.filter((e) => !known.has(e.id));
+      if (added.length > 0) {
+        // 导入新增条目按来源顺序追加，既有条目位置不变
+        const src = incomingOrder && incomingOrder.length > 0 ? incomingOrder : incoming.map((e) => e.id);
+        const index = new Map(src.map((id, i) => [id, i]));
+        added.sort((a, b) => (index.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (index.get(b.id) ?? Number.MAX_SAFE_INTEGER));
+        order = [...currentIds, ...added.map((e) => e.id)];
+      } else {
+        order = current.order;
+      }
+    }
+    set((s) => ({ db: { ...s.db, entries: r.entries, order, updatedAt: Date.now() } }));
     await get().persist();
     return { added: r.added, updated: r.updated, skipped: r.skipped };
+  },
+
+  moveEntry: async (fromId, toId, after) => {
+    const db = get().db;
+    const ids = resolvedOrder(db.entries, db.order);
+    const next = moveId(ids, fromId, toId, after);
+    if (next.join("\u0000") === ids.join("\u0000")) return;
+    set({ db: { ...db, order: next, updatedAt: Date.now() } });
+    await get().persist();
   },
 
   setMasterPassword: async (newMaster) => {

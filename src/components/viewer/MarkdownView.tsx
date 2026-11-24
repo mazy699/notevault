@@ -143,12 +143,13 @@ export const MarkdownView = memo(function MarkdownView({ content, filePath, dark
             const external =
               /^https?:\/\//i.test(raw) || /^mailto:/i.test(raw) || (absPathLike(raw) && !resolveRootRelative(raw));
             if (rootRel) {
+              const [rootPath] = raw.split(/[?#]/);
               return (
                 <a
                   href={rootRel}
                   onClick={(e) => {
                     e.preventDefault();
-                    openInternalLink(raw.slice(1));
+                    openInternalLink(safeDecode(rootPath).slice(1));
                   }}
                   {...rest}
                 >
@@ -158,17 +159,17 @@ export const MarkdownView = memo(function MarkdownView({ content, filePath, dark
             }
             if (external) {
               const isHttp = /^https?:\/\//i.test(raw);
-              const target = isHttp ? raw : absFileUrl(raw.replace(/^file:\/{2,}/i, ""));
+              const isMail = /^mailto:/i.test(raw);
+              const target = isHttp || isMail ? raw : absFileUrl(raw.replace(/^file:\/{2,}/i, ""));
               return (
                 <a
                   href={target}
                   onClick={(e) => {
-                    if (!isHttp) {
-                      e.preventDefault();
-                      openExternalLink(raw);
-                    }
+                    // 统一交宿主处理：桌面版系统默认程序，Web 版新标签页（Issue #7）
+                    e.preventDefault();
+                    openExternalLink(raw);
                   }}
-                  target={isHttp ? "_blank" : undefined}
+                  target={isHttp || isMail ? "_blank" : undefined}
                   rel="noreferrer"
                   {...rest}
                 >

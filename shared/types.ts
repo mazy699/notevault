@@ -170,6 +170,12 @@ export interface PwDb {
   format: "notevault-pw-v1";
   entries: PwEntry[];
   updatedAt: number;
+  /**
+   * 手动排序（条目 id，从前往后，Issue #9）。
+   * 缺省时按 updatedAt 倒序（旧库兼容）；一旦用户拖动即写入并持久化。
+   * 新建凭证插入最前；导入新增条目按来源顺序追加。
+   */
+  order?: string[];
 }
 
 /** git log 单条提交 */

@@ -702,14 +702,33 @@ const json = (res: http.ServerResponse, code: number, data: unknown): void => {
   res.end(JSON.stringify(data ?? null));
 };
 
-// 文件流式响应（供 /vault 与 /raw）
-function serveFile(res: http.ServerResponse, abs: string): void {
+// HTML 预览链接拦截（Issue #7）：仅 /vault 的 HTML 响应在 ?nv_preview=1 时注入。
+// 与桌面端 src-tauri/src/vault_proto.rs 的注入脚本保持一致（消息标记相同）。
+const PREVIEW_SCRIPT = `<script>(function(){var TAG="notevault-preview-link";var MODE="web";function isExt(h){return /^(https?:|mailto:|\\/\\/)/i.test(h)}function anchor(t){while(t&&t.nodeName!=="A")t=t.parentElement;return t}function go(e){var a=anchor(e.target);if(!a)return;var h=a.getAttribute("href");if(!h||h.charAt(0)==="#")return;e.preventDefault();if(MODE==="web"&&isExt(h)){try{window.open(h,"_blank","noopener,noreferrer")}catch(_){}}else{try{window.parent.postMessage({__nv:TAG,href:h},"*")}catch(_){}}}document.addEventListener("click",function(e){if(e.defaultPrevented||e.button!==0)return;go(e)},true);document.addEventListener("auxclick",function(e){if(e.button!==1)return;go(e)},true)})();</script>`;
+
+function injectPreviewScript(html: string): string {
+  const idx = html.toLowerCase().lastIndexOf("</body>");
+  if (idx === -1) return html + PREVIEW_SCRIPT;
+  return html.slice(0, idx) + PREVIEW_SCRIPT + html.slice(idx);
+}
+
+// 文件流式响应（供 /vault 与 /raw）；injectPreview 仅对 HTML 生效
+function serveFile(res: http.ServerResponse, abs: string, injectPreview = false): void {
   const ext = path.extname(abs).toLowerCase();
+  const mime = MIME[ext] || "application/octet-stream";
   res.writeHead(200, {
-    "Content-Type": MIME[ext] || "application/octet-stream",
+    "Content-Type": mime,
     "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
   });
+  if (injectPreview && (ext === ".html" || ext === ".htm")) {
+    try {
+      res.end(injectPreviewScript(fs.readFileSync(abs, "utf-8")));
+      return;
+    } catch {
+      /* 读取失败则回退为原样流式输出 */
+    }
+  }
   fs.createReadStream(abs).pipe(res);
 }
 
@@ -771,7 +790,7 @@ const server = http.createServer(async (req, res) => {
       const abs = path.resolve(root, norm);
       if (!abs.startsWith(root + path.sep)) return json(res, 403, { error: "路径越界" });
       if (!fs.existsSync(abs) || fs.statSync(abs).isDirectory()) return json(res, 404, { error: "文件不存在" });
-      return serveFile(res, abs);
+      return serveFile(res, abs, url.searchParams.get("nv_preview") === "1");
     }
 
     // 库外绝对路径文件：GET /raw?path=<abs>（md 中偶发的绝对路径图片引用）

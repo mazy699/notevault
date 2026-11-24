@@ -450,10 +450,7 @@ pub fn dispatch(app: &tauri::AppHandle, cmd: &str, payload: &Value) -> Result<Va
             let path = p.get("path").and_then(|v| v.as_str()).unwrap_or("");
             #[cfg(target_os = "windows")]
             {
-                std::process::Command::new("cmd")
-                    .args(["/c", "start", "", path])
-                    .spawn()
-                    .map_err(|e| format!("打开失败：{}", e))?;
+                shell_open_windows(path)?;
             }
             #[cfg(not(target_os = "windows"))]
             {
@@ -602,6 +599,40 @@ fn open_external_default(path: &str) {
     let _ = std::process::Command::new("open").arg(path).spawn();
     #[cfg(all(unix, not(target_os = "macos")))]
     let _ = std::process::Command::new("xdg-open").arg(path).spawn();
+}
+
+/// Windows：ShellExecuteW 直接打开 URL / 本地文件（不经 cmd.exe，避免元字符注入）
+#[cfg(target_os = "windows")]
+fn shell_open_windows(target: &str) -> Result<(), String> {
+    use std::ffi::c_void;
+    #[link(name = "shell32")]
+    extern "system" {
+        fn ShellExecuteW(
+            hwnd: *mut c_void,
+            lp_operation: *const u16,
+            lp_file: *const u16,
+            lp_parameters: *const u16,
+            lp_directory: *const u16,
+            n_show_cmd: i32,
+        ) -> isize;
+    }
+    let wide: Vec<u16> = target.encode_utf16().chain(std::iter::once(0)).collect();
+    let op: Vec<u16> = "open\0".encode_utf16().collect();
+    let ret = unsafe {
+        ShellExecuteW(
+            std::ptr::null_mut(),
+            op.as_ptr(),
+            wide.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            1,
+        )
+    };
+    if ret > 32 {
+        Ok(())
+    } else {
+        Err(format!("打开失败（ShellExecute 返回 {}）", ret))
+    }
 }
 
 /// git 只读命令（字符串输出）。参数数组调用，不经 shell，防注入。

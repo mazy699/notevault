@@ -71,8 +71,9 @@ export function resolveRelativeRef(href: string, currentPath: string): string | 
 /** 库根相对路径（以 / 开头）→ 若库内存在该文件则返回库内 URL，否则 null */
 export function resolveRootRelative(src: string): string | null {
   if (!src.startsWith("/")) return null;
-  const rel = src.slice(1);
-  return findInTree(rel) ? fileUrl(rel) : null;
+  const [pathPart] = safeDecode(src).split(/[?#]/);
+  const rel = pathPart.slice(1);
+  return rel && findInTree(rel) ? fileUrl(rel) : null;
 }
 
 /** 外部链接打开方式：桌面版交系统默认程序，Web 版新标签页 */
@@ -84,4 +85,46 @@ export function openExternalLink(raw: string): void {
   } else {
     window.open(raw, "_blank", "noreferrer");
   }
+}
+
+/** HTML 预览内链接的解析结果（库内 / 外部；null 表示忽略） */
+export type PreviewLinkTarget = { kind: "internal"; path: string } | { kind: "external"; href: string } | null;
+
+/**
+ * 解析 HTML 预览 iframe 转交的原始 href（Issue #7）：
+ * - 库内相对路径 / 以 / 开头的库根相对路径且文件存在 → internal（走标签机制）
+ * - http(s)/mailto/file/绝对路径 → external（交系统浏览器或新标签页）
+ * - 纯锚点、空链接、javascript/data 等 → null（维持 iframe 内默认行为/忽略）
+ * exists 由调用方注入，便于纯函数测试。
+ */
+export function classifyPreviewHref(
+  raw: string,
+  currentPath: string,
+  exists: (relPath: string) => boolean
+): PreviewLinkTarget {
+  const href = raw.trim();
+  if (!href || href.startsWith("#")) return null;
+  if (/^https?:\/\//i.test(href) || /^mailto:/i.test(href) || absPathLike(href)) {
+    return { kind: "external", href };
+  }
+  // 协议相对链接 //example.com/x：按 https 处理，避免被当成库内路径
+  if (href.startsWith("//")) return { kind: "external", href: "https:" + href };
+  if (/^(javascript|data|blob|about|vbscript):/i.test(href)) return null;
+  const [pathPartRaw] = href.split(/[?#]/);
+  const pathPart = safeDecode(pathPartRaw);
+  if (!pathPart) return null;
+  if (pathPart.startsWith("/")) {
+    const rel = pathPart.slice(1);
+    return rel && exists(rel) ? { kind: "internal", path: rel } : null;
+  }
+  const rel = resolveRelativeRef(pathPart, currentPath);
+  return rel && exists(rel) ? { kind: "internal", path: rel } : null;
+}
+
+/** 处理 HTML 预览内点击（parent 侧）：库内新标签打开，外链交宿主 */
+export function openPreviewHref(raw: string, currentPath: string): void {
+  const target = classifyPreviewHref(raw, currentPath, (rel) => !!findInTree(rel));
+  if (!target) return;
+  if (target.kind === "internal") openInternalLink(target.path);
+  else openExternalLink(target.href);
 }

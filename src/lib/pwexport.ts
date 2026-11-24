@@ -86,8 +86,8 @@ export function buildJson(db: PwDb): string {
   return JSON.stringify(db, null, 2);
 }
 
-/** 解析 JSON 导入：接受整库对象或条目数组 */
-function parseJsonImport(text: string): PwEntry[] | null {
+/** 解析 JSON 导入：接受整库对象或条目数组（整库可携带手动排序 order） */
+function parseJsonImport(text: string): { entries: PwEntry[]; order?: string[] } | null {
   let data: unknown;
   try {
     data = JSON.parse(text);
@@ -95,14 +95,18 @@ function parseJsonImport(text: string): PwEntry[] | null {
     return null;
   }
   if (Array.isArray(data)) {
-    return data.map((r) => normalizeEntry(r as Record<string, unknown>)).filter((e): e is PwEntry => e !== null);
+    return { entries: data.map((r) => normalizeEntry(r as Record<string, unknown>)).filter((e): e is PwEntry => e !== null) };
   }
   if (data && typeof data === "object") {
     const obj = data as Record<string, unknown>;
     if (Array.isArray(obj.entries)) {
-      return (obj.entries as Record<string, unknown>[])
+      const entries = (obj.entries as Record<string, unknown>[])
         .map((r) => normalizeEntry(r))
         .filter((e): e is PwEntry => e !== null);
+      const order = Array.isArray(obj.order)
+        ? obj.order.filter((v): v is string => typeof v === "string")
+        : undefined;
+      return { entries, order };
     }
   }
   return null;
@@ -265,15 +269,17 @@ export function buildMd(entries: PwEntry[], includeHistory = true): string {
 export interface ImportResult {
   entries: PwEntry[];
   format: "json" | "csv";
+  /** JSON 整库携带的手动排序（Issue #9）；CSV 无 */
+  order?: string[];
 }
 
 /** 按内容自动识别 JSON/CSV 并解析；失败抛错 */
 export function parseImportText(text: string, fileName = ""): ImportResult {
   const looksJson = text.trimStart().startsWith("{") || text.trimStart().startsWith("[") || /\.json$/i.test(fileName);
   if (looksJson) {
-    const entries = parseJsonImport(text);
-    if (!entries) throw new Error("JSON 解析失败：不是有效的 NoteVault 密码库导出文件");
-    return { entries, format: "json" };
+    const r = parseJsonImport(text);
+    if (!r) throw new Error("JSON 解析失败：不是有效的 NoteVault 密码库导出文件");
+    return { entries: r.entries, format: "json", order: r.order };
   }
   const entries = parseCsvImport(text);
   if (!entries) throw new Error("CSV 解析失败：缺少 title/account/password 表头");

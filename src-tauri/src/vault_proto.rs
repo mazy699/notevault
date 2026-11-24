@@ -64,14 +64,36 @@ fn text_response(status: u16, body: &'static str) -> tauri::http::Response<Cow<'
         .unwrap()
 }
 
-fn file_response(abs: &PathBuf, mime: &str) -> tauri::http::Response<Cow<'static, [u8]>> {
+/// HTML 预览链接拦截（Issue #7）：仅 HTML 响应在 ?nv_preview=1 时注入。
+/// 与 Web 宿主 web/server.ts 的 PREVIEW_SCRIPT 保持一致（消息标记相同）。
+const PREVIEW_SCRIPT: &str = r##"<script>(function(){var TAG="notevault-preview-link";var MODE="desktop";function isExt(h){return /^(https?:|mailto:|\/\/)/i.test(h)}function anchor(t){while(t&&t.nodeName!=="A")t=t.parentElement;return t}function go(e){var a=anchor(e.target);if(!a)return;var h=a.getAttribute("href");if(!h||h.charAt(0)==="#")return;e.preventDefault();if(MODE==="web"&&isExt(h)){try{window.open(h,"_blank","noopener,noreferrer")}catch(_){}}else{try{window.parent.postMessage({__nv:TAG,href:h},"*")}catch(_){}}}document.addEventListener("click",function(e){if(e.defaultPrevented||e.button!==0)return;go(e)},true);document.addEventListener("auxclick",function(e){if(e.button!==1)return;go(e)},true)})();</script>"##;
+
+fn inject_preview_script(html: &str) -> String {
+    let lower = html.to_ascii_lowercase();
+    match lower.rfind("</body>") {
+        Some(idx) => format!("{}{}{}", &html[..idx], PREVIEW_SCRIPT, &html[idx..]),
+        None => format!("{}{}", html, PREVIEW_SCRIPT),
+    }
+}
+
+fn file_response(abs: &PathBuf, mime: &str, inject_preview: bool) -> tauri::http::Response<Cow<'static, [u8]>> {
     match std::fs::read(abs) {
-        Ok(bytes) => tauri::http::Response::builder()
-            .status(200)
-            .header("Content-Type", mime)
-            .header("Cache-Control", "no-store")
-            .body(Cow::Owned(bytes))
-            .unwrap(),
+        Ok(bytes) => {
+            let body = if inject_preview && mime.starts_with("text/html") {
+                match String::from_utf8(bytes) {
+                    Ok(html) => inject_preview_script(&html).into_bytes(),
+                    Err(e) => e.into_bytes(),
+                }
+            } else {
+                bytes
+            };
+            tauri::http::Response::builder()
+                .status(200)
+                .header("Content-Type", mime)
+                .header("Cache-Control", "no-store")
+                .body(Cow::Owned(body))
+                .unwrap()
+        }
         Err(_) => text_response(404, "文件不存在"),
     }
 }
@@ -86,6 +108,12 @@ pub fn handle(
     };
     let raw = request.uri().path().trim_start_matches('/').to_string();
     let path = percent_decode(&raw);
+    // HTML 预览模式：仅库内 HTML 注入链接拦截脚本
+    let preview = request
+        .uri()
+        .query()
+        .map(|q| q.split('&').any(|kv| kv == "nv_preview=1"))
+        .unwrap_or(false);
 
     let root = match state.vault_path.lock().unwrap().clone() {
         Some(p) if p.is_dir() => p,
@@ -105,7 +133,7 @@ pub fn handle(
             return text_response(403, "仅支持库外图片文件的绝对路径访问");
         }
         let mime = mime_of(&rest);
-        return file_response(&abs, mime);
+        return file_response(&abs, mime, false);
     }
 
     // 库内相对路径（POSIX 分段）
@@ -124,5 +152,26 @@ pub fn handle(
         return text_response(404, "文件不存在");
     }
     let mime = mime_of(&path);
-    file_response(&abs, mime)
+    file_response(&abs, mime, preview)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn inject_before_body_close() {
+        let html = "<html><body><a href=\"b.html\">B</a></body></html>";
+        let out = inject_preview_script(html);
+        assert!(out.contains("notevault-preview-link"));
+        assert!(out.ends_with("</body></html>"));
+        assert!(out.find("notevault-preview-link").unwrap() < out.find("</body>").unwrap());
+    }
+
+    #[test]
+    fn inject_appends_without_body() {
+        let out = inject_preview_script("<p>hi</p>");
+        assert!(out.starts_with("<p>hi</p>"));
+        assert!(out.contains("notevault-preview-link"));
+    }
 }

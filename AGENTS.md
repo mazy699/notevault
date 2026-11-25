@@ -32,6 +32,7 @@
 | 桌面 release 构建 | `npx tauri build` |
 | 便携包 / Web 包 | `node scripts/pack-portable.mjs` / `node scripts/pack-web.mjs` |
 | Web 后台服务启停 | `启动NoteVault-Web版.bat` / `关闭NoteVault-Web版.bat` |
+| Web 重新构建并启动（最新代码） | `重新构建并启动NoteVault-Web版.bat`（可选 `--no-open`） |
 
 Release 资产固定包含：portable exe、setup exe、web zip、WebView2Loader.dll、checksums.txt。
 

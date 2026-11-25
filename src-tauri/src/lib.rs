@@ -35,6 +35,51 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![api::api])
         .register_uri_scheme_protocol("vault", vault_proto::handle)
+        .setup(|app| {
+            #[cfg(target_os = "windows")]
+            disable_browser_accelerator_keys(app.handle());
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("NoteVault 启动失败");
+}
+
+/// Windows WebView2：关闭浏览器加速键，让 Ctrl+P / Ctrl+F 等进入页面（由前端快捷键处理）。
+/// 否则 WebView2 会拦截 Ctrl+P（打印）等，导致应用内 Quick Open / 常用语检索无响应。
+/// setup 阶段 CoreWebView2 可能尚未就绪，因此后台重试直到设置成功。
+#[cfg(target_os = "windows")]
+fn disable_browser_accelerator_keys(app: &tauri::AppHandle) {
+    use tauri::Manager;
+    use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings3;
+    use windows_core::Interface;
+
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        for _ in 0..20 {
+            if let Some(win) = handle.get_webview_window("main") {
+                let (tx, rx) = std::sync::mpsc::channel();
+                let dispatched = win
+                    .with_webview(move |webview| {
+                        let applied = unsafe {
+                            webview
+                                .controller()
+                                .CoreWebView2()
+                                .ok()
+                                .and_then(|core| core.Settings().ok())
+                                .and_then(|settings| settings.cast::<ICoreWebView2Settings3>().ok())
+                                .map(|settings3| settings3.SetAreBrowserAcceleratorKeysEnabled(false).is_ok())
+                                .unwrap_or(false)
+                        };
+                        let _ = tx.send(applied);
+                    })
+                    .is_ok();
+                if dispatched {
+                    if let Ok(true) = rx.recv_timeout(std::time::Duration::from_millis(1000)) {
+                        return;
+                    }
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+    });
 }

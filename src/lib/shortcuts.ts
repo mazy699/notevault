@@ -32,14 +32,15 @@ export type SnippetShortcut = "search" | "new";
 
 /**
  * 常用语工作台内快捷键：
- * - `/` 聚焦搜索；
- * - `N` 新建；
- * 在输入框/文本域内、或已有弹窗/详情打开时不拦截。
+ * - `Ctrl/⌘+P` 快速检索；
+ * - `Ctrl/⌘+N` 新建；
+ * 弹窗/详情打开时不处理；允许在输入框聚焦时触发（组合键不会被输入）。
  */
-export function snippetShortcut(key: string, mods: Mods, typing: boolean, blocked: boolean): SnippetShortcut | null {
-  if (typing || blocked) return null;
-  if (mods.altKey || mods.ctrlKey || mods.metaKey || mods.shiftKey) return null;
-  if (key === "/") return "search";
-  if (key.toLowerCase() === "n") return "new";
+export function snippetShortcut(key: string, mods: Mods, blocked: boolean): SnippetShortcut | null {
+  if (blocked) return null;
+  if (!(mods.ctrlKey || mods.metaKey) || mods.altKey || mods.shiftKey) return null;
+  const k = key.toLowerCase();
+  if (k === "p") return "search";
+  if (k === "n") return "new";
   return null;
 }

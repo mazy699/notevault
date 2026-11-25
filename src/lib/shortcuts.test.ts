@@ -28,19 +28,20 @@ describe("workbenchFromShortcut（Alt+1~5）", () => {
   });
 });
 
-describe("snippetShortcut（/ 搜索、N 新建）", () => {
-  it("普通状态：/ 搜索、n/N 新建", () => {
-    expect(snippetShortcut("/", none, false, false)).toBe("search");
-    expect(snippetShortcut("n", none, false, false)).toBe("new");
-    expect(snippetShortcut("N", none, false, false)).toBe("new");
-    expect(snippetShortcut("x", none, false, false)).toBeNull();
+describe("snippetShortcut（Ctrl+P 检索、Ctrl+N 新建）", () => {
+  it("普通状态：Ctrl+P 检索、Ctrl+N 新建（Meta 同样支持）", () => {
+    expect(snippetShortcut("p", { ctrlKey: true }, false)).toBe("search");
+    expect(snippetShortcut("P", { metaKey: true }, false)).toBe("search");
+    expect(snippetShortcut("n", { ctrlKey: true }, false)).toBe("new");
+    expect(snippetShortcut("N", { ctrlKey: true }, false)).toBe("new");
+    expect(snippetShortcut("x", { ctrlKey: true }, false)).toBeNull();
   });
 
-  it("输入框内 / 弹窗打开 / 带修饰键时不拦截", () => {
-    expect(snippetShortcut("/", none, true, false)).toBeNull();
-    expect(snippetShortcut("n", none, true, false)).toBeNull();
-    expect(snippetShortcut("n", none, false, true)).toBeNull();
-    expect(snippetShortcut("n", { ctrlKey: true }, false, false)).toBeNull();
-    expect(snippetShortcut("n", { altKey: true }, false, false)).toBeNull();
+  it("弹窗打开 / 无 Ctrl/Meta / 带 Alt/Shift 时不处理", () => {
+    expect(snippetShortcut("p", { ctrlKey: true }, true)).toBeNull();
+    expect(snippetShortcut("n", { ctrlKey: true }, true)).toBeNull();
+    expect(snippetShortcut("n", {}, false)).toBeNull();
+    expect(snippetShortcut("n", { ctrlKey: true, altKey: true }, false)).toBeNull();
+    expect(snippetShortcut("n", { ctrlKey: true, shiftKey: true }, false)).toBeNull();
   });
 });

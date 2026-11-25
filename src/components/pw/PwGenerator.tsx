@@ -124,6 +124,22 @@ export function PwGenerator({
             spellCheck={false}
           />
         </div>
+        <div className="pwgen-row">
+          <span className="tag">仅允许</span>
+          <input
+            className="pwgen-exclude"
+            type="text"
+            placeholder="可选：只使用这些字符（留空 = 按上方字符类完整池），如 ~!^*_=:,;"
+            value={opts.allowedChars ?? ""}
+            onChange={(e) => update({ allowedChars: e.target.value })}
+            spellCheck={false}
+          />
+        </div>
+        {opts.allowedChars ? (
+          <div className="pwgen-hint">
+            已限制为「仅允许字符」与所选字符类的交集；排除字符继续生效，空字符类自动跳过。
+          </div>
+        ) : null}
       </div>
 
       <div className="pwgen-result">

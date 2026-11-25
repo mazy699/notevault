@@ -40,6 +40,11 @@ function displayTitle(s: Snippet): string {
   return (line ?? "").trim() || "（无标题）";
 }
 
+/** 检索结果单行预览：折叠空白并截断长正文 */
+function oneLine(content: string): string {
+  return content.replace(/\s+/g, " ").trim().slice(0, 200);
+}
+
 export function SnippetsWorkbench() {
   const { loaded, busy, error, db, load, addSnippet, updateSnippet, removeSnippet, moveSnippet, importSnippets, clearError } =
     useSnippets();
@@ -47,6 +52,7 @@ export function SnippetsWorkbench() {
   const [groupFilter, setGroupFilter] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ snippet: Snippet; isNew: boolean } | null>(null);
   const [viewingId, setViewingId] = useState<string | null>(null);
+  const [quickOpen, setQuickOpen] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [importState, setImportState] = useState<{
     snippets: Snippet[];
@@ -66,21 +72,18 @@ export function SnippetsWorkbench() {
     if (!loaded && !busy && !error) void load();
   }, [loaded, busy, error, load]);
 
-  // 工作台内快捷键：/ 聚焦搜索、N 新建（输入框内或弹窗打开时不拦截）
+  // 工作台内快捷键：Ctrl+P 快速检索、Ctrl+N 新建（弹窗/详情打开时不拦截）
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      const typing =
-        !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);
-      const action = snippetShortcut(e.key, e, typing, !loaded || !!editing || !!viewingId || !!importState);
+      const action = snippetShortcut(e.key, e, !loaded || !!editing || !!viewingId || !!importState || quickOpen);
       if (!action) return;
       e.preventDefault();
-      if (action === "search") searchRef.current?.focus();
+      if (action === "search") setQuickOpen(true);
       else setEditing({ snippet: newSnippet(), isNew: true });
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [loaded, editing, viewingId, importState]);
+  }, [loaded, editing, viewingId, importState, quickOpen]);
 
   const ordered = useMemo(() => sortSnippets(db.snippets, db.order), [db.snippets, db.order]);
   const groups = useMemo(() => snippetGroups(ordered), [ordered]);
@@ -211,7 +214,7 @@ export function SnippetsWorkbench() {
             ref={searchRef}
             type="text"
             placeholder="搜索标题 / 正文 / 分组…"
-            title="搜索（快捷键 /）"
+            title="搜索（Ctrl+P 快速检索）"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             spellCheck={false}
@@ -230,7 +233,7 @@ export function SnippetsWorkbench() {
           <Download size={15} />
           导出
         </button>
-        <button className="icon-btn labeled" title="新建常用语（快捷键 N）" disabled={!loaded} onClick={startNew}>
+        <button className="icon-btn labeled" title="新建常用语（Ctrl+N）" disabled={!loaded} onClick={startNew}>
           <Plus size={15} />
           新建
         </button>
@@ -271,7 +274,7 @@ export function SnippetsWorkbench() {
           <div className="sn-groups-tip">
             {canDrag ? "拖动卡片可调整顺序；点击卡片查看全文" : "搜索/分组过滤时暂停拖动排序"}
             <br />
-            快捷键：/ 搜索 · N 新建
+            快捷键：Ctrl+P 检索 · Ctrl+N 新建
           </div>
         </aside>
 
@@ -449,6 +452,17 @@ export function SnippetsWorkbench() {
         </div>
       )}
 
+      {quickOpen && (
+        <SnippetQuickSearch
+          snippets={ordered}
+          onClose={() => setQuickOpen(false)}
+          onOpen={(id) => {
+            setQuickOpen(false);
+            setViewingId(id);
+          }}
+        />
+      )}
+
       {editing && (
         <SnippetEditor
           draft={editing.snippet}
@@ -492,6 +506,89 @@ export function SnippetsWorkbench() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** 快速检索弹窗（Ctrl+P）：参考读取工作台 Quick Open 的交互 */
+function SnippetQuickSearch({
+  snippets,
+  onClose,
+  onOpen,
+}: {
+  snippets: Snippet[];
+  onClose: () => void;
+  onOpen: (id: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [selected, setSelected] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const results = useMemo(() => filterSnippets(snippets, query, null), [snippets, query]);
+
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => inputRef.current?.focus());
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  useEffect(() => setSelected(0), [query]);
+
+  const open = (s: Snippet) => onOpen(s.id);
+
+  return (
+    <div
+      className="qo-overlay"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="qo-panel sn-qo-panel">
+        <input
+          ref={inputRef}
+          type="text"
+          placeholder="搜索常用语（标题 / 正文 / 分组）…（↑↓ 选择，Enter 打开，Esc 关闭）"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowDown") {
+              e.preventDefault();
+              setSelected((s) => Math.min(results.length - 1, s + 1));
+            } else if (e.key === "ArrowUp") {
+              e.preventDefault();
+              setSelected((s) => Math.max(0, s - 1));
+            } else if (e.key === "Enter") {
+              e.preventDefault();
+              const hit = results[selected];
+              if (hit) open(hit);
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              onClose();
+            }
+          }}
+          spellCheck={false}
+        />
+        <div className="qo-list">
+          {results.length === 0 ? (
+            <div className="qo-empty">没有匹配的常用语</div>
+          ) : (
+            results.map((s, i) => (
+              <button
+                key={s.id}
+                className={`qo-item sn-qo-item${i === selected ? " selected" : ""}`}
+                onClick={() => open(s)}
+                onMouseEnter={() => setSelected(i)}
+              >
+                <StickyNote size={14} className="sn-qo-icon" />
+                <span className="sn-qo-main">
+                  <span className="sn-qo-title">{displayTitle(s)}</span>
+                  <span className="sn-qo-preview">{oneLine(s.content)}</span>
+                </span>
+                <span className="sn-card-group">{s.group || "未分组"}</span>
+                <span className="sn-qo-time">{fmtTime(s.updatedAt)}</span>
+              </button>
+            ))
+          )}
+        </div>
+        <div className="sn-qo-hint">共 {results.length} 条 · ↑↓ 选择 · Enter 打开详情 · Esc 关闭</div>
+      </div>
     </div>
   );
 }

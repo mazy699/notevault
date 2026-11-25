@@ -24,6 +24,10 @@ base64 = "0.22"
 rand_core = { version = "0.6", features = ["getrandom"] }
 ureq = { version = "2", default-features = false, features = ["native-tls"] }
 
+[target.'cfg(windows)'.dependencies]
+webview2-com = "0.39"
+windows-core = "0.62"
+
 [profile.release]
 strip = true
 lto = "thin"

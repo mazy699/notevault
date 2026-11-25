@@ -127,6 +127,8 @@ export const COMMANDS = [
   "open_external",
   "pw_load",
   "pw_save",
+  "snippets_load",
+  "snippets_save",
   "save_text_file",
   "wl_db_load",
   "wl_db_save",
@@ -175,6 +177,27 @@ export interface PwDb {
    * 缺省时按 updatedAt 倒序（旧库兼容）；一旦用户拖动即写入并持久化。
    * 新建凭证插入最前；导入新增条目按来源顺序追加。
    */
+  order?: string[];
+}
+
+/** 常用语：单条记录（纯文本，Issue #12） */
+export interface Snippet {
+  id: string;
+  title: string;
+  /** 正文：保留原始换行/空白，复制时逐字符一致 */
+  content: string;
+  /** 分组（空串 = 未分组） */
+  group: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** 常用语整库（%APPDATA%/notevault/snippets.json，双宿主同格式） */
+export interface SnippetDb {
+  format: "notevault-snippets-v1";
+  snippets: Snippet[];
+  updatedAt: number;
+  /** 手动排序（id 从前往后）；缺省按 updatedAt 倒序 */
   order?: string[];
 }
 

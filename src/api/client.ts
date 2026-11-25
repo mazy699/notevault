@@ -1,7 +1,7 @@
 /**
  * 宿主适配层：同一套 call(cmd, payload) 契约自动路由到 Tauri invoke 或 HTTP API。
  */
-import type { FileContent, FileNode, GitBranchInfo, PwDb, SearchResult, Snapshot, VaultInfo } from "../../shared/types";
+import type { FileContent, FileNode, GitBranchInfo, PwDb, SearchResult, SnippetDb, Snapshot, VaultInfo } from "../../shared/types";
 
 export function isTauri(): boolean {
   return typeof window !== "undefined" && !!window.__TAURI_INTERNALS__;
@@ -64,6 +64,10 @@ export const api = {
   /** 密码库：保存整库（提供主密码则加密写盘） */
   pwSave: (db: PwDb, masterPassword?: string | null) =>
     call<{ ok: boolean }>("pw_save", { db, masterPassword: masterPassword ?? null }),
+  /** 常用语：读取整库（文件不存在时宿主返回空库；损坏时抛错，不覆盖原文件） */
+  snippetsLoad: () => call<SnippetDb>("snippets_load"),
+  /** 常用语：保存整库（宿主原子写盘） */
+  snippetsSave: (db: SnippetDb) => call<{ ok: boolean }>("snippets_save", { db }),
   /** 桌面端：弹出"保存文件"对话框并写盘（Web 端返回 ok:false，由前端走浏览器下载） */
   saveTextFile: (defaultName: string, content: string) =>
     call<{ ok: boolean; path?: string }>("save_text_file", { defaultName, content }),

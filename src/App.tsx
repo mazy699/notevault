@@ -24,6 +24,10 @@ const PwWorkbench = lazy(() =>
 const WorklogWorkbench = lazy(() =>
   import("./worklog/WorklogWorkbench").then((m) => ({ default: m.WorklogWorkbench }))
 );
+/** 常用语工作台（快捷文本：卡片网格/搜索/拖动排序） */
+const SnippetsWorkbench = lazy(() =>
+  import("./components/snippets/SnippetsWorkbench").then((m) => ({ default: m.SnippetsWorkbench }))
+);
 
 export default function App() {
   const init = useVault((s) => s.init);
@@ -184,6 +188,18 @@ export default function App() {
             }
           >
             <WorklogWorkbench />
+          </Suspense>
+        ) : workbench === "snippets" ? (
+          <Suspense
+            fallback={
+              <div className="content-col">
+                <div className="diff-empty">
+                  <span className="spinner" /> 正在加载常用语…
+                </div>
+              </div>
+            }
+          >
+            <SnippetsWorkbench />
           </Suspense>
         ) : (
           <Suspense

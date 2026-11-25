@@ -27,7 +27,7 @@
 | --- | --- |
 | 前端构建（typecheck+renderer+node） | `npm run build` |
 | 单元测试 | `npx vitest run` |
-| 桌面冒烟（30 项） | `cd src-tauri && cargo run -- --smoke` |
+| 桌面冒烟（34 项） | `cd src-tauri && cargo run -- --smoke` |
 | Rust 单测 | `cd src-tauri && cargo test --lib` |
 | 桌面 release 构建 | `npx tauri build` |
 | 便携包 / Web 包 | `node scripts/pack-portable.mjs` / `node scripts/pack-web.mjs` |
@@ -44,7 +44,7 @@ Release 资产固定包含：portable exe、setup exe、web zip、WebView2Loader
 - 数据文件双宿主同路径/同格式（如 `%APPDATA%/notevault/*`、worklog 共用库）；
   写盘用临时文件 + rename 原子写，备份/轮转规则双端一致。
 - UI 复用设计令牌（`src/index.css` 的 CSS 变量）与既有组件样式，深浅主题必须同时验证。
-- 工作台为懒加载 chunk（读取/对比/密码/工作日志），不得把重依赖塞进首屏。
+- 工作台为懒加载 chunk（读取/对比/密码/工作日志/常用语），不得把重依赖塞进首屏。
 
 ## 4. 质量底线
 

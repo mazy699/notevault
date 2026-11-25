@@ -3,6 +3,7 @@ pub mod api;
 pub mod fsops;
 pub mod pwcrypto;
 pub mod pwstore;
+pub mod snippetstore;
 pub mod wlstore;
 pub mod settings;
 pub mod vault_proto;

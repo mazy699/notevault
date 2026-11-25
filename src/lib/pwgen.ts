@@ -12,6 +12,11 @@ export interface PwGenOpts {
   symbols: boolean;
   /** 排除字符集（逐字符从候选池剔除） */
   excludeChars: string;
+  /**
+   * 可选：仅允许使用的字符集（与各字符类求交，再剔除排除字符）。
+   * 留空/未提供 = 不限制，保持原有行为。
+   */
+  allowedChars?: string;
 }
 
 export const DEFAULT_EXCLUDE_CHARS = "O0oIl1|`'\"";
@@ -58,11 +63,12 @@ function shuffle(chars: string[]): string[] {
   return chars;
 }
 
-/** 按规则构建候选池（剔除排除字符），返回各类剩余池；null 表示该类被排除字符清空 */
+/** 按规则构建候选池：先与「仅允许字符」求交，再剔除排除字符；null 表示该类为空 */
 function buildPools(opts: PwGenOpts): { pools: string[]; all: string } {
   const ex = new Set(opts.excludeChars.split(""));
+  const allowed = opts.allowedChars ? new Set(opts.allowedChars.split("")) : null;
   const mk = (base: string): string | null => {
-    const kept = [...base].filter((c) => !ex.has(c)).join("");
+    const kept = [...base].filter((c) => !ex.has(c) && (!allowed || allowed.has(c))).join("");
     return kept.length > 0 ? kept : null;
   };
   const pools: string[] = [];
@@ -86,7 +92,7 @@ function buildPools(opts: PwGenOpts): { pools: string[]; all: string } {
 export function generatePassword(opts: PwGenOpts, excludePasswords: string[] = []): string {
   const { pools, all } = buildPools(opts);
   if (pools.length === 0 || all.length === 0) {
-    throw new Error("候选字符集为空：请至少启用一个字符类，且不要用排除字符清空它");
+    throw new Error("候选字符集为空：请至少启用一个字符类，并检查排除/仅允许字符设置");
   }
   const length = Math.max(4, Math.min(128, Math.round(opts.length)));
   const excluded = new Set(excludePasswords.filter(Boolean));

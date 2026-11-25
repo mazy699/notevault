@@ -59,6 +59,52 @@ describe("generatePassword（密码生成器）", () => {
     expect(["aaaa", "bbbb"]).not.toContain(pw);
   });
 
+  it("仅允许字符：结果完全来自允许集", () => {
+    const allowed = "~!^*_=:,;";
+    const opts = {
+      ...DEFAULT_GEN_OPTS,
+      length: 24,
+      upper: false,
+      lower: false,
+      digits: false,
+      symbols: true,
+      excludeChars: "",
+      allowedChars: allowed,
+    };
+    for (let i = 0; i < 50; i++) {
+      const pw = generatePassword(opts);
+      expect(pw.length).toBe(24);
+      for (const c of pw) expect(allowed.includes(c)).toBe(true);
+    }
+  });
+
+  it("仅允许字符与排除字符同时生效，并与字符类求交", () => {
+    const opts = {
+      ...DEFAULT_GEN_OPTS,
+      length: 16,
+      upper: false,
+      lower: true,
+      digits: true,
+      symbols: true,
+      excludeChars: "ae1",
+      allowedChars: "abcde0123",
+    };
+    for (let i = 0; i < 50; i++) {
+      const pw = generatePassword(opts);
+      for (const c of pw) {
+        expect("bcd023".includes(c)).toBe(true);
+      }
+    }
+  });
+
+  it("仅允许字符清空某类时自动跳过该类", () => {
+    const opts = { ...DEFAULT_GEN_OPTS, length: 20, excludeChars: "", allowedChars: "abcd" };
+    for (let i = 0; i < 30; i++) {
+      const pw = generatePassword(opts);
+      expect(/^[a-d]{20}$/.test(pw)).toBe(true);
+    }
+  });
+
   it("全部类被排除字符清空时抛错", () => {
     const opts = { length: 16, upper: false, lower: true, digits: false, symbols: false, excludeChars: "abcdefghijklmnopqrstuvwxyz" };
     expect(() => generatePassword(opts)).toThrow(/候选字符集为空/);

@@ -511,6 +511,16 @@ const routes: Record<string, (payload: Record<string, unknown>) => unknown> = {
     pwSave(db, typeof p.masterPassword === "string" && p.masterPassword ? p.masterPassword : null);
     return { ok: true };
   },
+
+  // ---------------- 常用语工作台（Issue #12）：%APPDATA%/notevault/snippets.json ----------------
+  snippets_load: () => snippetsLoad(),
+  snippets_save: (p) => {
+    const db = p.db;
+    if (!db || typeof db !== "object" || Array.isArray(db)) throw new Error("常用语数据缺失");
+    snippetsSave(db as Record<string, unknown>);
+    return { ok: true };
+  },
+
   save_text_file: () => {
     // Web 宿主无文件对话框：前端按 isTauri 分流走浏览器下载
     return { ok: false, path: undefined };
@@ -608,6 +618,41 @@ function safeAuxName(v: unknown): string {
 
 // ---------------- 密码库存储（%APPDATA%/notevault/passwords.json，与桌面宿主同一路径/同一加密格式） ----------------
 const PW_FILE = path.join(path.dirname(SETTINGS_FILE), "passwords.json");
+
+// ---------------- 常用语存储（%APPDATA%/notevault/snippets.json，与桌面宿主同一路径/格式） ----------------
+const SNIPPETS_FILE = path.join(path.dirname(SETTINGS_FILE), "snippets.json");
+
+function emptySnippetsDb(): Record<string, unknown> {
+  return { format: "notevault-snippets-v1", snippets: [], updatedAt: Date.now(), order: [] };
+}
+
+/** 读取常用语库；文件不存在返回空库，损坏时抛错（不覆盖原文件） */
+function snippetsLoad(): Record<string, unknown> {
+  let raw: string;
+  try {
+    raw = fs.readFileSync(SNIPPETS_FILE, "utf-8");
+  } catch {
+    return emptySnippetsDb();
+  }
+  let db: unknown;
+  try {
+    db = JSON.parse(raw);
+  } catch (e) {
+    throw new Error(`常用语数据文件损坏：${e instanceof Error ? e.message : String(e)}`);
+  }
+  if (!db || typeof db !== "object" || Array.isArray(db)) {
+    throw new Error("常用语数据文件损坏：根节点不是对象");
+  }
+  return db as Record<string, unknown>;
+}
+
+function snippetsSave(db: Record<string, unknown>): void {
+  fs.mkdirSync(path.dirname(SNIPPETS_FILE), { recursive: true });
+  // 原子写：临时文件 + 重命名，避免写一半损坏
+  const tmp = SNIPPETS_FILE + ".tmp";
+  fs.writeFileSync(tmp, JSON.stringify(db, null, 2), "utf-8");
+  fs.renameSync(tmp, SNIPPETS_FILE);
+}
 
 /** scrypt KDF 参数（与桌面宿主 Rust 端严格一致：N=2^15, r=8, p=1 → 32 字节密钥） */
 const SCRYPT_OPTS = { cost: 1 << 15, blockSize: 8, parallelization: 1, maxmem: 96 * 1024 * 1024 };

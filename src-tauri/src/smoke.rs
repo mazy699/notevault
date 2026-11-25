@@ -183,6 +183,43 @@ pub fn run() {
     let _ = std::fs::remove_file(&pw_path);
     std::env::remove_var("NOTEVAULT_PASSWORDS_FILE");
 
+    // ---------------- 常用语工作台：snippetstore（独立临时文件） ----------------
+    let sn_path = std::env::temp_dir().join(format!("notevault_smoke_snippets_{}.json", std::process::id()));
+    let _ = std::fs::remove_file(&sn_path);
+    std::env::set_var("NOTEVAULT_SNIPPETS_FILE", &sn_path);
+    match crate::snippetstore::load() {
+        Ok(db) => check!(
+            "snippets_first_load_empty",
+            db.get("format").and_then(|v| v.as_str()) == Some("notevault-snippets-v1")
+                && db.get("snippets").and_then(|v| v.as_array()).map(|a| a.is_empty()).unwrap_or(false)
+        ),
+        Err(e) => check!(format!("snippets_first_load_failed: {}", e).as_str(), false),
+    }
+    let sdb = json!({
+        "format": "notevault-snippets-v1",
+        "snippets": [{ "id": "s1", "title": "问候", "content": "你好\n世界", "group": "话术", "createdAt": 1, "updatedAt": 2 }],
+        "updatedAt": 3,
+        "order": ["s1"],
+    });
+    check!("snippets_save", crate::snippetstore::save(&sdb).is_ok());
+    match crate::snippetstore::load() {
+        Ok(db) => {
+            let content = db
+                .get("snippets")
+                .and_then(|v| v.as_array())
+                .and_then(|a| a.first())
+                .and_then(|s| s.get("content"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            check!("snippets_roundtrip", content == "你好\n世界");
+        }
+        Err(e) => check!(format!("snippets_roundtrip_failed: {}", e).as_str(), false),
+    }
+    std::fs::write(&sn_path, "{ bad-json").expect("写入损坏常用语文件");
+    check!("snippets_corrupt_rejected", crate::snippetstore::load().is_err());
+    let _ = std::fs::remove_file(&sn_path);
+    std::env::remove_var("NOTEVAULT_SNIPPETS_FILE");
+
     // ---------------- Worklog 工作台：整库文件层（独立临时目录） ----------------
     let wl_dir = std::env::temp_dir().join(format!("notevault_smoke_wl_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&wl_dir);

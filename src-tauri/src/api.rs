@@ -475,6 +475,14 @@ pub fn dispatch(app: &tauri::AppHandle, cmd: &str, payload: &Value) -> Result<Va
             crate::pwstore::save(&db, master)?;
             Ok(json!({ "ok": true }))
         }
+
+        // ---------------- 常用语工作台（Issue #12） ----------------
+        "snippets_load" => crate::snippetstore::load(),
+        "snippets_save" => {
+            let db = p.get("db").cloned().ok_or("常用语数据缺失")?;
+            crate::snippetstore::save(&db)?;
+            Ok(json!({ "ok": true }))
+        }
         "save_text_file" => {
             use tauri_plugin_dialog::DialogExt;
             let default_name = p.get("defaultName").and_then(|v| v.as_str()).unwrap_or("export.txt");

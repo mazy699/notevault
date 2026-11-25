@@ -16,7 +16,6 @@ import {
   Plus,
   Search,
   ShieldCheck,
-  Timer,
   Trash2,
   Upload,
   Wand2,
@@ -203,7 +202,6 @@ export function PwWorkbench() {
             </div>
           )}
         </div>
-        <AutoLockControl />
         {pw.encrypted && pw.unlocked && (
           <button
             className="icon-btn labeled"
@@ -334,42 +332,6 @@ function UnlockCard({ wrong, onUnlock }: { wrong: boolean; onUnlock: (master: st
         </button>
       </div>
     </div>
-  );
-}
-
-/** 自动上锁设置（Issue #4）：分钟数（0 = 关闭），回车/失焦保存 */
-function AutoLockControl() {
-  const minutes = usePw((s) => s.autoLockMinutes);
-  const setMinutes = usePw((s) => s.setAutoLockMinutes);
-  const [draft, setDraft] = useState(String(minutes));
-  useEffect(() => setDraft(String(minutes)), [minutes]);
-  const commit = () => {
-    const n = Number(draft.trim() === "" ? 0 : draft);
-    if (!Number.isFinite(n)) {
-      setDraft(String(minutes));
-      return;
-    }
-    void setMinutes(n);
-  };
-  return (
-    <label className="pw-autolock" title="无操作超过设定分钟数后自动上锁（0 = 关闭）">
-      <Timer size={14} />
-      <input
-        type="number"
-        min={0}
-        max={1440}
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            commit();
-            (e.target as HTMLInputElement).blur();
-          }
-        }}
-      />
-      <span>分钟自动上锁</span>
-    </label>
   );
 }
 

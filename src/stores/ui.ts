@@ -1,8 +1,8 @@
 import { create } from "zustand";
 
 export type SidebarTab = "files" | "search" | "recents";
-/** 工作台：读取（笔记浏览）/ 对比（Diff）/ 密码（凭证管理）/ 工作日志（Worklog）/ 常用语（快捷文本） */
-export type Workbench = "read" | "diff" | "pw" | "worklog" | "snippets";
+/** 工作台：读取 / 对比 / 密码 / 工作日志 / 常用语 / 设置（设置不参与 Alt 编号切换） */
+export type Workbench = "read" | "diff" | "pw" | "worklog" | "snippets" | "settings";
 
 interface UiState {
   theme: "dark" | "light";
@@ -15,6 +15,7 @@ interface UiState {
   quickOpen: boolean;
   autoRefresh: boolean;
   setWorkbench: (w: Workbench) => void;
+  setTheme: (t: "dark" | "light") => void;
   toggleTheme: () => void;
   setSidebarWidth: (w: number) => void;
   toggleSidebar: () => void;
@@ -61,11 +62,13 @@ export const useUi = create<UiState>((set, get) => ({
   quickOpen: false,
   autoRefresh: initialAutoRefresh(),
   setWorkbench: (w) => set({ workbench: w, quickOpen: false, vaultMenuOpen: false }),
-  toggleTheme: () => {
-    const next = get().theme === "dark" ? "light" : "dark";
+  setTheme: (next) => {
     applyTheme(next);
     set({ theme: next });
     window.dispatchEvent(new CustomEvent("nv-theme-changed", { detail: next }));
+  },
+  toggleTheme: () => {
+    get().setTheme(get().theme === "dark" ? "light" : "dark");
   },
   setSidebarWidth: (w) => set({ sidebarWidth: Math.min(480, Math.max(180, w)) }),
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),

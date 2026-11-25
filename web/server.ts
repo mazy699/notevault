@@ -357,7 +357,7 @@ function vaultInfo(p: string | null): VaultInfo | null {
 }
 
 const routes: Record<string, (payload: Record<string, unknown>) => unknown> = {
-  __ping: () => ({ ok: true, host: "web", version: "0.7.2" }),
+  __ping: () => ({ ok: true, host: "web", version: "0.8.0" }),
   vault_info: (p) => vaultInfo(typeof p.path === "string" && p.path ? path.resolve(String(p.path)) : vaultPath),
   vault_pick: () => null, // Web 版由前端弹输入框
   vault_set: (p) => {

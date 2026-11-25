@@ -34,7 +34,8 @@
 | Web 后台服务启停 | `启动NoteVault-Web版.bat` / `关闭NoteVault-Web版.bat` |
 | Web 重新构建并启动（最新代码） | `重新构建并启动NoteVault-Web版.bat`（可选 `--no-open`） |
 
-Release 资产固定包含：portable exe、setup exe、web zip、WebView2Loader.dll、checksums.txt。
+Release 资产固定包含：portable exe、setup exe、WebView2Loader.dll、checksums.txt。
+Web 端不随 Release 发布，使用 `重新构建并启动NoteVault-Web版.bat` 本地构建。
 
 ## 3. 架构与双宿主一致性
 

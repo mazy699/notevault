@@ -1,20 +1,27 @@
-/** 活动栏：工作台切换（读取 / 对比 / 密码 / 工作日志 / 常用语，未来新功能 = 新增图标） */
-import { BookOpenText, CalendarClock, GitCompare, KeyRound, StickyNote } from "lucide-react";
+/** 活动栏：工作台切换（按设置启用/禁用）+ 快捷键 tooltip + 设置入口 */
+import { BookOpenText, CalendarClock, GitCompare, KeyRound, Settings, StickyNote } from "lucide-react";
 import { useUi } from "../../stores/ui";
-import { workbenchShortcutHint } from "../../lib/shortcuts";
+import { useAppSettings } from "../../stores/appSettings";
+import { workbenchActionId, type WorkbenchSwitchId } from "../../lib/shortcuts";
 
 export function ActivityBar() {
   const { workbench, setWorkbench } = useUi();
+  const enabled = useAppSettings((s) => s.settings.enabled);
+  const shortcuts = useAppSettings((s) => s.settings.shortcuts);
 
-  const btn = (wb: "read" | "diff" | "pw" | "worklog" | "snippets", title: string, Icon: typeof BookOpenText) => (
-    <button
-      className={`activity-btn${workbench === wb ? " active" : ""}`}
-      title={`${title} · ${workbenchShortcutHint(wb)}`}
-      onClick={() => setWorkbench(wb)}
-    >
-      <Icon size={19} />
-    </button>
-  );
+  const btn = (wb: WorkbenchSwitchId, title: string, Icon: typeof BookOpenText) => {
+    if (!enabled[wb]) return null;
+    const binding = shortcuts[workbenchActionId(wb)];
+    return (
+      <button
+        className={`activity-btn${workbench === wb ? " active" : ""}`}
+        title={binding ? `${title} · ${binding}` : title}
+        onClick={() => setWorkbench(wb)}
+      >
+        <Icon size={19} />
+      </button>
+    );
+  };
 
   return (
     <div className="activity-bar">
@@ -24,6 +31,13 @@ export function ActivityBar() {
       {btn("worklog", "工作日志（Worklog）", CalendarClock)}
       {btn("snippets", "常用语工作台（快捷文本）", StickyNote)}
       <span className="activity-spacer" />
+      <button
+        className={`activity-btn${workbench === "settings" ? " active" : ""}`}
+        title="设置"
+        onClick={() => setWorkbench("settings")}
+      >
+        <Settings size={19} />
+      </button>
     </div>
   );
 }

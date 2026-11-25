@@ -8,9 +8,10 @@ import { Viewer } from "./components/viewer/Viewer";
 import { QuickOpen } from "./components/search/QuickOpen";
 import { FileCopyMenu } from "./components/common/FileCopyMenu";
 import { usePwAutoLock } from "./hooks/usePwAutoLock";
-import { workbenchFromShortcut } from "./lib/shortcuts";
+import { workbenchFromEvent } from "./lib/shortcuts";
 import { useVault } from "./stores/vault";
 import { useUi } from "./stores/ui";
+import { useAppSettings } from "./stores/appSettings";
 import { loadRecents, useTabs } from "./stores/tabs";
 import { api } from "./api/client";
 
@@ -29,6 +30,10 @@ const WorklogWorkbench = lazy(() =>
 const SnippetsWorkbench = lazy(() =>
   import("./components/snippets/SnippetsWorkbench").then((m) => ({ default: m.SnippetsWorkbench }))
 );
+/** 设置中心（工作台启停 / 自定义快捷键 / 通用设置） */
+const SettingsWorkbench = lazy(() =>
+  import("./components/settings/SettingsWorkbench").then((m) => ({ default: m.SettingsWorkbench }))
+);
 
 export default function App() {
   const init = useVault((s) => s.init);
@@ -42,6 +47,7 @@ export default function App() {
   useEffect(() => {
     void init();
     void loadRecents();
+    void useAppSettings.getState().load();
   }, [init]);
 
   const refreshAll = async (note?: string) => {
@@ -115,8 +121,9 @@ export default function App() {
         else if (ui.vaultMenuOpen) ui.setVaultMenuOpen(false);
         return;
       }
-      // 工作台切换：Alt+1~5（全局生效，避开浏览器 Ctrl+数字 标签页语义）
-      const wb = workbenchFromShortcut(e.key, e);
+      // 工作台切换：默认 Alt+Shift+1~5（设置页可自定义；避开 Ctrl+数字 标签页语义）
+      const appSettings = useAppSettings.getState().settings;
+      const wb = workbenchFromEvent(e, appSettings.shortcuts, appSettings.enabled);
       if (wb) {
         e.preventDefault();
         ui.setWorkbench(wb);
@@ -208,6 +215,18 @@ export default function App() {
             }
           >
             <SnippetsWorkbench />
+          </Suspense>
+        ) : workbench === "settings" ? (
+          <Suspense
+            fallback={
+              <div className="content-col">
+                <div className="diff-empty">
+                  <span className="spinner" /> 正在加载设置…
+                </div>
+              </div>
+            }
+          >
+            <SettingsWorkbench />
           </Suspense>
         ) : (
           <Suspense

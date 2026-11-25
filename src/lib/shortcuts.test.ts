@@ -1,47 +1,75 @@
 import { describe, expect, it } from "vitest";
-import { snippetShortcut, workbenchFromShortcut, workbenchShortcutHint, WORKBENCH_SHORTCUTS } from "./shortcuts";
+import {
+  DEFAULT_SHORTCUTS,
+  matchesShortcut,
+  normalizeShortcut,
+  shortcutConflict,
+  shortcutFromEvent,
+  workbenchFromEvent,
+} from "./shortcuts";
 
-const none = {};
-const alt = { altKey: true };
+const allEnabled = { read: true, diff: true, pw: true, worklog: true, snippets: true };
 
-describe("workbenchFromShortcut（Alt+1~5）", () => {
-  it("五个工作台映射完整", () => {
-    expect(WORKBENCH_SHORTCUTS.map((s) => s.key)).toEqual(["1", "2", "3", "4", "5"]);
-    expect(workbenchFromShortcut("1", alt)).toBe("read");
-    expect(workbenchFromShortcut("2", alt)).toBe("diff");
-    expect(workbenchFromShortcut("3", alt)).toBe("pw");
-    expect(workbenchFromShortcut("4", alt)).toBe("worklog");
-    expect(workbenchFromShortcut("5", alt)).toBe("snippets");
+describe("shortcutFromEvent / normalizeShortcut", () => {
+  it("生成规范组合（修饰键顺序 / 字母大写）", () => {
+    expect(shortcutFromEvent({ key: "p", ctrlKey: true })).toBe("Ctrl+P");
+    expect(shortcutFromEvent({ key: "1", altKey: true, shiftKey: true })).toBe("Alt+Shift+1");
+    expect(shortcutFromEvent({ key: "F2", ctrlKey: true })).toBe("Ctrl+F2");
+    expect(shortcutFromEvent({ key: "p", ctrlKey: true, altKey: true, shiftKey: true })).toBe(
+      "Ctrl+Alt+Shift+P"
+    );
   });
 
-  it("无 Alt / 带 Ctrl/Meta/Shift / 越界键不处理", () => {
-    expect(workbenchFromShortcut("3", none)).toBeNull();
-    expect(workbenchFromShortcut("3", { altKey: true, ctrlKey: true })).toBeNull();
-    expect(workbenchFromShortcut("3", { altKey: true, metaKey: true })).toBeNull();
-    expect(workbenchFromShortcut("3", { altKey: true, shiftKey: true })).toBeNull();
-    expect(workbenchFromShortcut("6", alt)).toBeNull();
+  it("Shift+数字：优先 code，兼容 ! 等移位字符", () => {
+    expect(shortcutFromEvent({ key: "!", code: "Digit1", altKey: true, shiftKey: true })).toBe("Alt+Shift+1");
+    expect(shortcutFromEvent({ key: "!", altKey: true, shiftKey: true })).toBe("Alt+Shift+1");
+    expect(shortcutFromEvent({ key: "@", altKey: true, shiftKey: true })).toBe("Alt+Shift+2");
+    expect(normalizeShortcut("Alt+Shift+!")).toBe("Alt+Shift+1");
   });
 
-  it("tooltip 提示文本", () => {
-    expect(workbenchShortcutHint("read")).toBe("Alt+1");
-    expect(workbenchShortcutHint("snippets")).toBe("Alt+5");
+  it("无修饰键 / 非法键返回 null", () => {
+    expect(shortcutFromEvent({ key: "p" })).toBeNull();
+    expect(shortcutFromEvent({ key: "Process", ctrlKey: true })).toBeNull();
+    expect(shortcutFromEvent({ key: "+", ctrlKey: true })).toBeNull();
+  });
+
+  it("规范化配置文本", () => {
+    expect(normalizeShortcut("control+p")).toBe("Ctrl+P");
+    expect(normalizeShortcut("Shift+Alt+1")).toBe("Alt+Shift+1");
+    expect(normalizeShortcut("cmd+shift+n")).toBe("Shift+Meta+N");
+    expect(normalizeShortcut("P")).toBeNull();
+    expect(normalizeShortcut("Ctrl+")).toBeNull();
+    expect(normalizeShortcut("")).toBeNull();
+  });
+
+  it("matchesShortcut 匹配大小写与顺序差异", () => {
+    expect(matchesShortcut({ key: "p", ctrlKey: true }, "control+p")).toBe(true);
+    expect(matchesShortcut({ key: "1", altKey: true, shiftKey: true }, "Alt+Shift+1")).toBe(true);
+    expect(matchesShortcut({ key: "1", altKey: true }, "Alt+Shift+1")).toBe(false);
   });
 });
 
-describe("snippetShortcut（Ctrl+P 检索、Ctrl+N 新建）", () => {
-  it("普通状态：Ctrl+P 检索、Ctrl+N 新建（Meta 同样支持）", () => {
-    expect(snippetShortcut("p", { ctrlKey: true }, false)).toBe("search");
-    expect(snippetShortcut("P", { metaKey: true }, false)).toBe("search");
-    expect(snippetShortcut("n", { ctrlKey: true }, false)).toBe("new");
-    expect(snippetShortcut("N", { ctrlKey: true }, false)).toBe("new");
-    expect(snippetShortcut("x", { ctrlKey: true }, false)).toBeNull();
+describe("默认绑定与冲突", () => {
+  it("默认：工作台 Alt+Shift+1~5，常用语 Ctrl+P / Ctrl+N", () => {
+    expect(DEFAULT_SHORTCUTS["workbench.read"]).toBe("Alt+Shift+1");
+    expect(DEFAULT_SHORTCUTS["workbench.snippets"]).toBe("Alt+Shift+5");
+    expect(DEFAULT_SHORTCUTS["snippets.search"]).toBe("Ctrl+P");
+    expect(DEFAULT_SHORTCUTS["snippets.new"]).toBe("Ctrl+N");
   });
 
-  it("弹窗打开 / 无 Ctrl/Meta / 带 Alt/Shift 时不处理", () => {
-    expect(snippetShortcut("p", { ctrlKey: true }, true)).toBeNull();
-    expect(snippetShortcut("n", { ctrlKey: true }, true)).toBeNull();
-    expect(snippetShortcut("n", {}, false)).toBeNull();
-    expect(snippetShortcut("n", { ctrlKey: true, altKey: true }, false)).toBeNull();
-    expect(snippetShortcut("n", { ctrlKey: true, shiftKey: true }, false)).toBeNull();
+  it("重复绑定被识别（自身除外 / 空值不冲突）", () => {
+    expect(shortcutConflict(DEFAULT_SHORTCUTS, "snippets.search", "Alt+Shift+1")).toBe("workbench.read");
+    expect(shortcutConflict(DEFAULT_SHORTCUTS, "snippets.search", "Ctrl+P")).toBeNull();
+    expect(shortcutConflict(DEFAULT_SHORTCUTS, "snippets.search", "")).toBeNull();
+  });
+
+  it("workbenchFromEvent 按启用状态与自定义绑定匹配", () => {
+    expect(workbenchFromEvent({ key: "3", altKey: true, shiftKey: true }, DEFAULT_SHORTCUTS, allEnabled)).toBe("pw");
+    expect(
+      workbenchFromEvent({ key: "3", altKey: true, shiftKey: true }, DEFAULT_SHORTCUTS, { ...allEnabled, pw: false })
+    ).toBeNull();
+    const custom = { ...DEFAULT_SHORTCUTS, "workbench.pw": "Ctrl+Alt+9" };
+    expect(workbenchFromEvent({ key: "9", ctrlKey: true, altKey: true }, custom, allEnabled)).toBe("pw");
+    expect(workbenchFromEvent({ key: "p", ctrlKey: true }, DEFAULT_SHORTCUTS, allEnabled)).toBeNull();
   });
 });

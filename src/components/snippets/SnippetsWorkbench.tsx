@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { api, isTauri } from "../../api/client";
 import { useSnippets } from "../../stores/snippets";
+import { useAppSettings } from "../../stores/appSettings";
 import {
   buildSnippetsJson,
   filterSnippets,
@@ -25,7 +26,7 @@ import {
   sortSnippets,
 } from "../../lib/snippets";
 import type { Snippet } from "../../../shared/types";
-import { snippetShortcut } from "../../lib/shortcuts";
+import { matchesShortcut } from "../../lib/shortcuts";
 
 function fmtTime(ts: number): string {
   const d = new Date(ts);
@@ -48,6 +49,8 @@ function oneLine(content: string): string {
 export function SnippetsWorkbench() {
   const { loaded, busy, error, db, load, addSnippet, updateSnippet, removeSnippet, moveSnippet, importSnippets, clearError } =
     useSnippets();
+  const searchBinding = useAppSettings((s) => s.settings.shortcuts["snippets.search"]);
+  const newBinding = useAppSettings((s) => s.settings.shortcuts["snippets.new"]);
   const [query, setQuery] = useState("");
   const [groupFilter, setGroupFilter] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ snippet: Snippet; isNew: boolean } | null>(null);
@@ -72,14 +75,18 @@ export function SnippetsWorkbench() {
     if (!loaded && !busy && !error) void load();
   }, [loaded, busy, error, load]);
 
-  // 工作台内快捷键：Ctrl+P 快速检索、Ctrl+N 新建（弹窗/详情打开时不拦截）
+  // 工作台内快捷键（设置页可自定义）：默认 Ctrl+P 快速检索、Ctrl+N 新建
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const action = snippetShortcut(e.key, e, !loaded || !!editing || !!viewingId || !!importState || quickOpen);
-      if (!action) return;
-      e.preventDefault();
-      if (action === "search") setQuickOpen(true);
-      else setEditing({ snippet: newSnippet(), isNew: true });
+      if (!loaded || editing || viewingId || importState || quickOpen) return;
+      const shortcuts = useAppSettings.getState().settings.shortcuts;
+      if (matchesShortcut(e, shortcuts["snippets.search"])) {
+        e.preventDefault();
+        setQuickOpen(true);
+      } else if (matchesShortcut(e, shortcuts["snippets.new"])) {
+        e.preventDefault();
+        setEditing({ snippet: newSnippet(), isNew: true });
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -214,7 +221,7 @@ export function SnippetsWorkbench() {
             ref={searchRef}
             type="text"
             placeholder="搜索标题 / 正文 / 分组…"
-            title="搜索（Ctrl+P 快速检索）"
+            title={`搜索（${searchBinding || "未设置"} 快速检索）`}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             spellCheck={false}
@@ -233,7 +240,7 @@ export function SnippetsWorkbench() {
           <Download size={15} />
           导出
         </button>
-        <button className="icon-btn labeled" title="新建常用语（Ctrl+N）" disabled={!loaded} onClick={startNew}>
+        <button className="icon-btn labeled" title={`新建常用语（${newBinding || "未设置"}）`} disabled={!loaded} onClick={startNew}>
           <Plus size={15} />
           新建
         </button>
@@ -274,7 +281,7 @@ export function SnippetsWorkbench() {
           <div className="sn-groups-tip">
             {canDrag ? "拖动卡片可调整顺序；点击卡片查看全文" : "搜索/分组过滤时暂停拖动排序"}
             <br />
-            快捷键：Ctrl+P 检索 · Ctrl+N 新建
+            快捷键：{searchBinding || "未设置"} 检索 · {newBinding || "未设置"} 新建
           </div>
         </aside>
 

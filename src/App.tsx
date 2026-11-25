@@ -8,6 +8,7 @@ import { Viewer } from "./components/viewer/Viewer";
 import { QuickOpen } from "./components/search/QuickOpen";
 import { FileCopyMenu } from "./components/common/FileCopyMenu";
 import { usePwAutoLock } from "./hooks/usePwAutoLock";
+import { workbenchFromShortcut } from "./lib/shortcuts";
 import { useVault } from "./stores/vault";
 import { useUi } from "./stores/ui";
 import { loadRecents, useTabs } from "./stores/tabs";
@@ -112,6 +113,13 @@ export default function App() {
       if (e.key === "Escape") {
         if (ui.quickOpen) ui.setQuickOpen(false);
         else if (ui.vaultMenuOpen) ui.setVaultMenuOpen(false);
+        return;
+      }
+      // 工作台切换：Alt+1~5（全局生效，避开浏览器 Ctrl+数字 标签页语义）
+      const wb = workbenchFromShortcut(e.key, e);
+      if (wb) {
+        e.preventDefault();
+        ui.setWorkbench(wb);
         return;
       }
       if (ui.workbench !== "read") return;

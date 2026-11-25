@@ -25,6 +25,7 @@ import {
   sortSnippets,
 } from "../../lib/snippets";
 import type { Snippet } from "../../../shared/types";
+import { snippetShortcut } from "../../lib/shortcuts";
 
 function fmtTime(ts: number): string {
   const d = new Date(ts);
@@ -54,6 +55,7 @@ export function SnippetsWorkbench() {
     mode: "merge" | "replace";
   } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   // 拖动排序状态
   const [dragId, setDragId] = useState<string | null>(null);
@@ -63,6 +65,22 @@ export function SnippetsWorkbench() {
   useEffect(() => {
     if (!loaded && !busy && !error) void load();
   }, [loaded, busy, error, load]);
+
+  // 工作台内快捷键：/ 聚焦搜索、N 新建（输入框内或弹窗打开时不拦截）
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      const typing =
+        !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);
+      const action = snippetShortcut(e.key, e, typing, !loaded || !!editing || !!viewingId || !!importState);
+      if (!action) return;
+      e.preventDefault();
+      if (action === "search") searchRef.current?.focus();
+      else setEditing({ snippet: newSnippet(), isNew: true });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [loaded, editing, viewingId, importState]);
 
   const ordered = useMemo(() => sortSnippets(db.snippets, db.order), [db.snippets, db.order]);
   const groups = useMemo(() => snippetGroups(ordered), [ordered]);
@@ -190,8 +208,10 @@ export function SnippetsWorkbench() {
         <div className="sn-search">
           <Search size={13} />
           <input
+            ref={searchRef}
             type="text"
             placeholder="搜索标题 / 正文 / 分组…"
+            title="搜索（快捷键 /）"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             spellCheck={false}
@@ -210,7 +230,7 @@ export function SnippetsWorkbench() {
           <Download size={15} />
           导出
         </button>
-        <button className="icon-btn labeled" title="新建常用语" disabled={!loaded} onClick={startNew}>
+        <button className="icon-btn labeled" title="新建常用语（快捷键 N）" disabled={!loaded} onClick={startNew}>
           <Plus size={15} />
           新建
         </button>
@@ -250,6 +270,8 @@ export function SnippetsWorkbench() {
           ))}
           <div className="sn-groups-tip">
             {canDrag ? "拖动卡片可调整顺序；点击卡片查看全文" : "搜索/分组过滤时暂停拖动排序"}
+            <br />
+            快捷键：/ 搜索 · N 新建
           </div>
         </aside>
 

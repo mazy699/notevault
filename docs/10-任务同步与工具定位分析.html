@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>任务同步与工具定位分析（Issue #25 · 分析稿）</title>
+<style>
+  :root {
+    --bg: #f6f7fb; --card: #ffffff; --line: #e3e6ef; --text: #1f2430; --muted: #6b7280;
+    --accent: #4f6ef7; --accent-soft: #eef1ff; --ok: #12855f; --ok-soft: #e6f6ef;
+    --warn: #b45309; --warn-soft: #fdf3e3; --bad: #b42318; --bad-soft: #fdecea;
+    --jira: #0052cc; --linear: #5e6ad2; --nv: #0f9d8f; --agent: #8a5cf6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #10131a; --card: #171c26; --line: #2a3140; --text: #e6e9f2; --muted: #98a1b3;
+      --accent: #7b93ff; --accent-soft: #1c2440; --ok: #3ecf8e; --ok-soft: #132a20;
+      --warn: #f0a44b; --warn-soft: #2c2213; --bad: #f4736a; --bad-soft: #2e1614;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.75 -apple-system, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+  }
+  main { max-width: 1000px; margin: 0 auto; padding: 32px 24px 72px; }
+  h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: .5px; }
+  h2 { font-size: 20px; margin: 44px 0 14px; padding-bottom: 8px; border-bottom: 2px solid var(--line); }
+  h2 .no { color: var(--accent); margin-right: 8px; font-family: Consolas, monospace; }
+  h3 { font-size: 16.5px; margin: 26px 0 10px; }
+  p { margin: 8px 0; }
+  ul, ol { margin: 8px 0; padding-left: 24px; }
+  li { margin: 4px 0; }
+  code {
+    font-family: Consolas, "Cascadia Mono", monospace; font-size: 13px;
+    background: var(--accent-soft); color: var(--accent);
+    padding: 1px 6px; border-radius: 5px; word-break: break-all;
+  }
+  a { color: var(--accent); text-decoration: none; border-bottom: 1px dashed var(--line); }
+  .meta { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+  .meta b { color: var(--text); font-weight: 600; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px 20px; margin: 14px 0;
+  }
+  .tl { border-left: 4px solid var(--accent); }
+  .tl h3 { margin-top: 0; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13.5px; background: var(--card); }
+  th, td { border: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { background: var(--accent-soft); font-weight: 600; white-space: nowrap; }
+  td ul { margin: 0; padding-left: 18px; }
+  .chip {
+    display: inline-block; padding: 1px 10px; border-radius: 999px;
+    color: #fff; font-size: 12px; font-weight: 600; letter-spacing: .3px; white-space: nowrap;
+  }
+  .chip.jira { background: var(--jira); } .chip.linear { background: var(--linear); }
+  .chip.nv { background: var(--nv); } .chip.agent { background: var(--agent); }
+  .chip.gh { background: #24292f; } .chip.me { background: #6b7280; }
+  .tag { display: inline-block; padding: 0 8px; border-radius: 5px; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+  .tag.ok { background: var(--ok-soft); color: var(--ok); }
+  .tag.warn { background: var(--warn-soft); color: var(--warn); }
+  .tag.bad { background: var(--bad-soft); color: var(--bad); }
+  .flow { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; margin: 14px 0; }
+  .flow .node {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 10px 14px; min-width: 150px; flex: 1;
+  }
+  .flow .node b { display: block; font-size: 14px; margin-bottom: 3px; }
+  .flow .node span { font-size: 12.5px; color: var(--muted); display: block; line-height: 1.5; }
+  .flow .arr { display: flex; align-items: center; color: var(--accent); font-size: 20px; font-weight: 700; padding: 0 2px; }
+  .layer { border-left: 4px solid var(--line); padding: 10px 16px; margin: 10px 0; background: var(--card); border-radius: 0 10px 10px 0; }
+  .layer.l1 { border-color: var(--jira); } .layer.l2 { border-color: var(--linear); }
+  .layer.l3 { border-color: var(--nv); } .layer.la { border-color: var(--agent); }
+  .layer b { font-size: 14.5px; }
+  .layer .who { color: var(--muted); font-size: 12.5px; }
+  .qa { background: var(--card); border: 1px solid var(--line); border-radius: 12px; margin: 14px 0; overflow: hidden; }
+  .qa .q { padding: 12px 18px; background: var(--accent-soft); font-weight: 700; font-size: 15px; }
+  .qa .a { padding: 12px 18px; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 760px) { .cols { grid-template-columns: 1fr; } }
+  .opt { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; }
+  .opt h4 { margin: 0 0 8px; font-size: 14.5px; }
+  .opt.rec { border-color: var(--accent); border-width: 2px; }
+  .footnote { color: var(--muted); font-size: 12.5px; }
+  hr { border: none; border-top: 1px solid var(--line); margin: 28px 0; }
+  .check li { list-style: none; margin-left: -18px; }
+  .check li::before { content: "☐ "; color: var(--accent); font-weight: 700; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>任务同步与工具定位分析</h1>
+<div class="meta">
+  <b>关联</b>：NoteVault Issue <a href="https://github.com/mazy699/notevault/issues/25">#25</a>（任务管理同步 Jira）&nbsp;·&nbsp;
+  <b>日期</b>：2026-11-27 &nbsp;·&nbsp;
+  <b>性质</b>：分析稿 / 决策文档，<b>未开发</b> &nbsp;·&nbsp;
+  <b>作者</b>：Mazy + AI 协作整理
+</div>
+
+<div class="card tl">
+  <h3>一页结论（TL;DR）</h3>
+  <ul>
+    <li><b>三层定位</b>：<span class="chip jira">Jira</span> 公司任务的<b>唯一事实源</b>（只读对待）；<span class="chip linear">Linear</span> 个人<b>跨端收集站</b>（手机/电脑同步：Jira 镜像 + GitHub issue + 想法速记）；<span class="chip nv">NoteVault</span> <b>本地深用层</b>（周/月视图、worklog、复盘统计，永不同步出去）。</li>
+    <li><b>推荐链路</b>：Jira / GitHub ──<span class="chip agent">Agent 定时搬运</span>──▶ Linear（收集站）──<span class="chip nv">NoteVault 拉取或 Agent 推送</span>──▶ 周月视图。Jira → NoteVault <b>直连</b>作为并行路线先做（即 Issue #25 原 Phase 1）。</li>
+    <li><b>Issue #25 结论</b>：原方案成立，且数据模型已预留 <code>external_source / external_id</code>，天然支持把 <code>linear</code>、<code>github</code> 作为后续新源接入；建议补充「多源枚举 + 字段最小化镜像」两条调整，其余照做。</li>
+    <li><b>关键路径判断</b>：Jira→Linear 的同步<b>不需要开发 NoteVault</b>，用 Agent（如 ZCode 定时任务）+ 同步脚本即可实现（走 Jira MCP 读、Linear API 写）；Unito/Zapier 类第三方同步平台需要 Jira 管理员权限，公司账号基本不可行。</li>
+    <li><b>先拍板再开发</b>：第 7 节给出 6 个决策项，其中「公司数据镜像到个人 Linear 的合规确认」是硬前提。</li>
+  </ul>
+</div>
+
+<h2><span class="no">1</span>三个工具的定位</h2>
+
+<table>
+  <tr>
+    <th style="width:120px"></th>
+    <th><span class="chip jira">Jira（公司）</span></th>
+    <th><span class="chip linear">Linear（个人）</span></th>
+    <th><span class="chip nv">NoteVault 工作日志工作台（本地）</span></th>
+  </tr>
+  <tr>
+    <th>角色定位</th>
+    <td><b>公司任务唯一事实源</b><br>公司流程照常在 Jira 走，不试图改变它</td>
+    <td><b>个人跨端收集站 / 收件箱</b><br>所有需要"我跟进的事"的集中入口</td>
+    <td><b>本地深用层</b><br>周/月视图回顾、worklog 记录、个人统计</td>
+  </tr>
+  <tr>
+    <th>账号与权限</th>
+    <td>公司账号，基础任务管理权限，<b>无管理员</b>（装不了应用、改不了全局配置）</td>
+    <td>个人账号，全权限（可建 API Key、装集成）</td>
+    <td>无账号概念，纯本地文件/sqlite</td>
+  </tr>
+  <tr>
+    <th>设备覆盖</th>
+    <td>公司网络内为主</td>
+    <td><b>手机 + 电脑实时同步</b>，随时看随时记</td>
+    <td>电脑为主（Web 版 / 桌面版），不做多端同步</td>
+  </tr>
+  <tr>
+    <th>放什么</th>
+    <td>Story / 子任务 / Bug / 公司协作</td>
+    <td>① Jira 任务镜像（只读）② 个人 GitHub issue ③ 临时任务与想法速记</td>
+    <td>① 外部任务（jira/linear/github 源）② 本地手动任务 ③ worklog 工时与内容 ④ 复盘笔记</td>
+  </tr>
+  <tr>
+    <th>强项</th>
+    <td>公司流程、字段完整、同事可见</td>
+    <td>快、跨端、键盘操作、个人自由度高</td>
+    <td>周/月视图是<b>独有能力</b>（Jira/Linear 都没有按你需求定制的周月视图）；数据 100% 本地可控</td>
+  </tr>
+  <tr>
+    <th>弱项 / 约束</th>
+    <td>无周月视图；权限小做不了集成侧改造</td>
+    <td>免费档有 issue 数量上限（约 250 个活跃 issue，各资料口径略有差异）；统计图表主要在付费档</td>
+    <td>仅本机可见；无移动端</td>
+  </tr>
+  <tr>
+    <th>写入原则</th>
+    <td>公司流程内正常使用；NoteVault 侧<b>只读</b>（worklog 回写是唯一例外，且显式确认）</td>
+    <td>个人可自由写；<b>Jira 镜像条目只读</b>，勾选完成等动作不回传 Jira</td>
+    <td>Agent / 同步 / 手动都可写，本地条目<b>永不被同步覆盖或删除</b>（Issue #25 已约定）</td>
+  </tr>
+</table>
+
+<div class="card">
+  <p><b>一句话记忆</b>：Jira 管"公司要求我做什么"，Linear 管"我手头所有事"（含个人），NoteVault 管"我做了什么、做得怎样"（时间与复盘）。三者互不替代。</p>
+</div>
+
+<h2><span class="no">2</span>总体数据流（推荐架构）</h2>
+
+<div class="layer l1"><b>第 1 层 · 源头</b> <span class="who">—— 事实发生的地方</span>
+  <ul>
+    <li><span class="chip jira">Jira</span>：分配给我的 Story 子任务 / Bug（公司账号，只读拉取）</li>
+    <li><span class="chip gh">GitHub</span>：个人仓库 issue（如 mazy699/notevault 的 #25…）</li>
+    <li><span class="chip me">本人</span>：临时任务、想法速记（手机上直接进 Linear）</li>
+  </ul>
+</div>
+
+<div class="flow">
+  <div class="node"><b>Jira</b><span>Jira MCP（已配置）或 REST + PAT</span></div>
+  <div class="arr">──▶</div>
+  <div class="node"><b>GitHub Issues</b><span>gh CLI / REST</span></div>
+  <div class="arr">┐</div>
+  <div class="node" style="border-color:var(--agent)"><b>Agent 定时搬运</b><span>ZCode 定时任务 + 同步脚本（增量、幂等、按 updated 游标）</span></div>
+  <div class="arr">──▶</div>
+  <div class="node" style="border-color:var(--linear)"><b>Linear 收集站</b><span>手机/电脑同步；个人任务直接在 App 里记</span></div>
+  <div class="arr">┐</div>
+  <div class="node" style="border-color:var(--nv)"><b>NoteVault 工作日志工作台</b><span>周/月视图 + worklog + 统计；拉取 Linear 或接收 Agent 推送</span></div>
+</div>
+
+<p>另有两条<b>旁路</b>（图中未画，作为对冲）：</p>
+<ul>
+  <li><b>Jira → NoteVault 直连</b>（Issue #25 原 Phase 1）：不经过 Linear，NoteVault 直接从 Jira 拉取。价值是不依赖个人 Linear、字段保真度高（父 Story、估时等都能拿到）。</li>
+  <li><b>想法速记 → NoteVault 常用语</b>：与任务无关的碎片信息仍走常用语工作台，不塞进任务流。</li>
+</ul>
+
+<h2><span class="no">3</span>四个关键问题逐条解答</h2>
+
+<div class="qa">
+  <div class="q">Q1 · Linear 和公司 Jira 怎么同步？（Jira 已配 MCP；公司账号权限小、无管理员）</div>
+  <div class="a">
+    <p>三条候选路线，可行性差别很大：</p>
+    <table>
+      <tr><th style="width:150px">路线</th><th>机制</th><th style="width:110px">可行性</th><th>说明</th></tr>
+      <tr>
+        <td>① 第三方同步平台<br><span class="footnote">Unito / Zapier / Exalate 等</span></td>
+        <td>平台在 Jira 侧安装应用、建立双向同步规则</td>
+        <td><span class="tag bad">不可行</span></td>
+        <td>都需要 <b>Jira 管理员安装应用</b>或全局权限；公司账号只有基础任务权限，且公司数据经第三方平台中转风险更大</td>
+      </tr>
+      <tr>
+        <td>② Atlassian 官方 MCP 直连</td>
+        <td><code>mcp.atlassian.com</code>（官方远程 MCP）</td>
+        <td><span class="tag warn">看 Jira 类型</span></td>
+        <td>官方远程 MCP <b>仅支持 Jira/Confluence Cloud</b>；若是自建 Server/DC 则不可用，需改走社区 MCP（如 <code>sooperset/mcp-atlassian</code>，支持 PAT，用户级凭据即可）或直接 REST</td>
+      </tr>
+      <tr>
+        <td>③ <b>Agent 定时镜像（推荐）</b></td>
+        <td>Agent 定时跑同步脚本：Jira 侧<b>读</b>（MCP 或 REST + PAT），Linear 侧<b>写</b>（GraphQL API / 官方 MCP）</td>
+        <td><span class="tag ok">可行</span></td>
+        <td>只需要<b>用户级凭据</b>（自己的账号能看什么就同步什么），完全不需要管理员；增量按 <code>updated</code> 游标；脚本跑在自己机器上，数据不经第三方</td>
+      </tr>
+    </table>
+    <p><b>推荐：路线 ③</b>。落地形态很轻：</p>
+    <ul>
+      <li>一个同步脚本（Node/Python，放本机，比如仓库 <code>scripts/</code> 或独立目录）；</li>
+      <li>定时触发用现成能力（如 ZCode 的定时任务 / Windows 计划任务），工作时段每 15–30 分钟一次即可；</li>
+      <li><b>幂等约定</b>：Linear issue 描述头部嵌入 Jira key（如 <code>[JIRA:PROJ-123]</code>）或用固定 label <code>jira-sync</code>，同步前先按 key 查重，存在则更新、不存在则创建；</li>
+      <li><b>方向约定</b>：Jira → Linear <b>单向</b>。在 Linear 里只查看、加个人备注，不改状态——状态以 Jira 为准，下次同步会覆盖回来。这样也回避了"个人账号写公司系统"的权限与合规问题；</li>
+      <li><b>字段最小化</b>：只镜像 标题 / issue key 链接 / 状态 / 优先级 / 截止日 / 父 Story 标题，<b>不镜像描述全文与附件</b>（既省空间也降合规风险）。</li>
+    </ul>
+    <p class="footnote">注：你已在 Linear 关联 GitHub——官方 GitHub 集成主要做 PR↔issue 关联与自动关闭，<b>issue 的持续同步</b>仍建议纳入路线 ③ 的同一个同步脚本（gh CLI 拉 issue → Linear API 建/更新），Jira 与 GitHub 用同一套游标与查重逻辑。</p>
+  </div>
+</div>
+
+<div class="qa">
+  <div class="q">Q2 · Linear 能用 Agent 创建/更新任务吗？</div>
+  <div class="a">
+    <p><b>能，而且有三条通道</b>，按需选择：</p>
+    <table>
+      <tr><th style="width:170px">通道</th><th>认证</th><th>能做什么</th><th>适用场景</th></tr>
+      <tr>
+        <td>① 官方托管 MCP<br><code>https://mcp.linear.app/mcp</code></td>
+        <td>OAuth 2.1 授权，或直接 <code>Authorization: Bearer &lt;API Key&gt;</code></td>
+        <td>查找 / <b>创建 / 更新</b> issue、project、document、comment（另有 <code>/mcp/readonly</code> 只读端点）</td>
+        <td>ZCode 等 MCP 客户端直接挂上即用，最省事</td>
+      </tr>
+      <tr>
+        <td>② GraphQL API + Personal API Key</td>
+        <td>Linear 设置 → 安全与访问 → Personal API keys</td>
+        <td><code>issueCreate</code> / <code>issueUpdate</code> 等全部 mutation</td>
+        <td>同步脚本用这个：一个 HTTP 请求就能建/改 issue，最稳定可控</td>
+      </tr>
+      <tr>
+        <td>③ Agents API（"真 Agent 身份"）</td>
+        <td>需要注册 OAuth Agent 应用</td>
+        <td>以 Agent 身份发会话与活动（@-mention 交互等）</td>
+        <td><b>不需要</b>。个人 API Key 不能发 agent activity，但我们的场景只需"创建/更新 issue"，通道 ①② 足够</td>
+      </tr>
+    </table>
+    <p class="footnote">结论：同步脚本走 ②（GraphQL + Personal API Key），日常让 ZCode 直接操作 Linear 走 ①（官方 MCP）。两者用同一个 API Key 也可以。</p>
+  </div>
+</div>
+
+<div class="qa">
+  <div class="q">Q3 · 能统计任务吗？</div>
+  <div class="a">
+    <ul>
+      <li><b>Linear 原生统计</b>：Insights 图表基本在付费档；免费档能力有限，且个人自用场景下原生图表并不针对"周/月复盘"设计。</li>
+      <li><b>Linear API 统计</b>：可以全量拉 issue（含 <code>createdAt / completedAt / assignee / cycle</code>），想算什么都能算——但这正是<b>别在 Linear 里重复造</b>的理由。</li>
+      <li><b>NoteVault 才是统计主场</b>：本地数据齐全（task + work_entry），周视图看"本周该做什么/做了什么"，月视图日历看节奏，配合 worklog 工时出个人报告。后续可在月视图加简单统计（本周完成数、工时合计、按项目分布），成本很低且完全私有。</li>
+    </ul>
+    <p><b>建议分工</b>：Linear 只做"今天/最近"的查看与勾选；所有<b>统计与回顾</b>都收敛到 NoteVault。</p>
+  </div>
+</div>
+
+<div class="qa">
+  <div class="q">Q4 · NoteVault 任务工作台能支持 AI Agent 直接创建/更新任务吗？</div>
+  <div class="a">
+    <p><b>现状不能</b>——NoteVault 目前对外没有任何 Agent 可调用的接口。但有三个可选方案，都不复杂：</p>
+    <div class="cols">
+      <div class="opt rec">
+        <h4>方案 A · 本地 Agent HTTP API（推荐首选）</h4>
+        <p>Web 版宿主本来就跑在 <code>127.0.0.1:8321</code>（node:http），增加一个本地 token 保护的 Agent 端点（如 <code>POST /agent/task</code>），内部复用现有 <code>call(cmd, payload)</code> 命令契约；桌面版按双宿主惯例同步登记（<code>shared/types.ts</code> / <code>client.ts</code> / <code>web/server.ts</code> / <code>api.rs</code> 四处）。</p>
+        <p>Agent 用 <code>curl</code> 就能建/改任务；桌面端开着时同样可达（同端口约定）。</p>
+        <p><b>优点</b>：改动小、契约清晰、和现有架构零冲突。<b>约束</b>：只绑 127.0.0.1、必须带本地 token、只开放白名单命令。</p>
+      </div>
+      <div class="opt">
+        <h4>方案 B · NoteVault 本地 MCP Server</h4>
+        <p>写一个 stdio MCP server 小进程，把"建任务/改状态/查周视图数据"暴露为 MCP tools，任何支持 MCP 的 Agent（ZCode、Claude 等）都能直接调用。</p>
+        <p><b>优点</b>：最通用，Agent 体验最自然。<b>代价</b>：多一个常驻进程和一套配置，工作量比 A 大。</p>
+      </div>
+      <div class="opt">
+        <h4>方案 C · NoteVault 拉 Linear（拉模式）</h4>
+        <p>给 NoteVault 加"Linear 同步"设置（与 Issue #25 的 Jira 同步同构：PAT + 增量游标 + upsert），NoteVault 主动定时拉 Linear。</p>
+        <p><b>优点</b>：不依赖 Agent 在线，纯 NoteVault 内部闭环。<b>缺点</b>：Agent 不能"即时"写入，实时性差一档。</p>
+      </div>
+      <div class="opt">
+        <h4>推荐组合</h4>
+        <p><b>C 先行、A 跟进</b>：C 与 Issue #25 的 Jira 拉取是同一套代码骨架（只换源），边际成本最低；A 作为第二阶段补上"Agent 即时写入"能力。B 可以后置，等真有跨工具 MCP 编排需求再说。</p>
+      </div>
+    </div>
+    <p class="footnote">安全底线（无论 A/B）：token 仅存本地设置、UI 打码、日志脱敏；接口只接受白名单命令；任何写操作不影响"本地条目不被覆盖"原则。</p>
+  </div>
+</div>
+
+<h2><span class="no">4</span>Issue #25 方案重审（引入 Linear 后的调整）</h2>
+
+<h3>4.1 仍然成立的部分</h3>
+<ul>
+  <li><b>Phase 1 = Jira → NoteVault 直连只读</b>：路线不受 Linear 影响，依然是第一优先——它最快让周/月视图有公司任务，且不依赖个人 Linear 可用性。</li>
+  <li><b>数据模型已预留多源</b>：原方案给 <code>task</code> 增加 <code>external_source / external_id / external_url / external_parent_key…</code> 并建唯一索引——这正是"Linear / GitHub 作为新源"所需要的全部字段，<b>不需要返工</b>。</li>
+  <li>同步策略（增量游标、幂等 upsert、失败保留旧数据、无后台常驻）、安全约束（token 本地、宿主代理限域）原样保留。</li>
+</ul>
+
+<h3>4.2 建议的调整</h3>
+<table>
+  <tr><th style="width:210px">调整点</th><th>建议</th></tr>
+  <tr>
+    <td><code>external_source</code> 取值</td>
+    <td>直接定义为枚举 <code>"jira" | "linear" | "github" | "manual"</code>（迁移注释里写明，虽然 Phase 1 只会写入 <code>jira</code>）。周视图/详情的来源徽标按源显示不同图标与链接格式。</td>
+  </tr>
+  <tr>
+    <td>收录规则（原待确认问题 3）</td>
+    <td>多源下规则统一：<b>周视图</b> = 有时间窗（Jira duedate / Linear due date）或本周已有条目的任务都收录；<b>月视图</b> = 计划 chip（按 due date）+ 每日侧栏"外部待办"列表。两个视图都能看到"纯导入、还没记 worklog"的任务——这是 Issue #25 已识别的关键点，多源后更重要。</td>
+  </tr>
+  <tr>
+    <td>Agent 写入通道</td>
+    <td>方案 A（本地 Agent HTTP API）拆成<b>独立小 issue</b>，不塞进 #25 的 Phase 1，避免范围膨胀。</td>
+  </tr>
+  <tr>
+    <td>Linear 源的字段映射（预留）</td>
+    <td>Linear issue <code>identifier</code>（如 <code>ME-12</code>）→ <code>external_id</code>；<code>url</code> → <code>external_url</code>；state → status；project → project；父 issue → <code>external_parent_key/summary</code>；due date → 时间窗。与 Jira 映射表并列，实现时只是多一张映射配置。</td>
+  </tr>
+  <tr>
+    <td>合规与字段最小化</td>
+    <td>无论直连还是经 Linear，NoteVault 侧同样遵循"只镜像元数据字段"原则；描述按需懒加载（点开详情再拉），不落地全文。</td>
+  </tr>
+</table>
+
+<h3>4.3 三条路线对比</h3>
+<table>
+  <tr><th style="width:130px">路线</th><th>链路</th><th>优点</th><th>缺点</th><th style="width:100px">结论</th></tr>
+  <tr>
+    <td>路线 1<br>直连</td>
+    <td>Jira → NoteVault</td>
+    <td>一跳到位、字段保真（父 Story/估时都能拿）、不依赖 Linear</td>
+    <td>只覆盖 Jira；不含 GitHub issue 与个人任务；Agent 写入需另做接口</td>
+    <td><span class="tag ok">先做</span><br><span class="footnote">= #25 Phase 1</span></td>
+  </tr>
+  <tr>
+    <td>路线 2<br>经 Linear</td>
+    <td>Jira/GitHub → Agent → Linear → NoteVault</td>
+    <td>单一上游收敛三种源；手机端全程可用；Agent 生态自然衔接</td>
+    <td>多一跳；镜像可能丢字段；依赖 Linear 可用性与免费档上限</td>
+    <td><span class="tag warn">第二步</span></td>
+  </tr>
+  <tr>
+    <td>路线 3<br>混合（推荐）</td>
+    <td>1 与 2 并存</td>
+    <td><code>external_source</code> 天然支持并存；同一任务从两个源来时按 (source, id) 去重，周视图去重展示</td>
+    <td>需要约定"重复源"的合并规则（建议：jira 源优先级高于 linear 镜像）</td>
+    <td><span class="tag ok">目标形态</span></td>
+  </tr>
+</table>
+
+<h3>4.4 Issue #25 原有 7 个待确认问题的建议答案</h3>
+<table>
+  <tr><th style="width:60px">#</th><th style="width:290px">问题（原 issue）</th><th>建议答案（待你拍板）</th></tr>
+  <tr><td>1</td><td>Jira 类型与认证</td><td>看地址：<code>*.atlassian.net</code> = Cloud（官方 MCP 可用，REST 用 <code>/rest/api/3/</code> + 邮箱 + API Token）；公司自建域名 = Server/DC（REST <code>/rest/api/2/</code> + PAT）。已配好的 Jira MCP 能查到数据，即说明凭据链路可用，同步脚本直接复用同一凭据。</td></tr>
+  <tr><td>2</td><td>JQL 口径</td><td>维持原方案：子任务为主、Bug 白名单可配置；Story 只作父上下文（标题下方 <code>STORY-123 · 摘要</code>），不占周视图行。</td></tr>
+  <tr><td>3</td><td>周/月视图怎么展示纯导入任务</td><td>两者都要：周视图"计划条/待办行"、月视图"计划 chip + 每日外部待办侧栏"。实现顺序先周视图，月视图随后。</td></tr>
+  <tr><td>4</td><td>状态映射可配置？</td><td>是。默认 To Do / In Progress / Done 三档，设置页提供"Jira 状态 → 本地状态"映射表，未匹配状态落 Done 之外的兜底档并提示。</td></tr>
+  <tr><td>5</td><td>worklog 回写是否本期</td><td>下一期（原 Phase 2 结论不变），且必须显式按钮 + 确认。</td></tr>
+  <tr><td>6</td><td>JQL 结果消失的 issue</td><td>保留 + 标记 <code>external_missing</code>（不自动删、不自动置 done），周视图折叠到"已从源消失"分组，可手动归档。</td></tr>
+  <tr><td>7</td><td>同步间隔与后台定时</td><td>默认 15 分钟，仅应用打开期间（原方案）；不做系统级后台服务。跨设备场景交给 Linear 层（Agent 镜像独立于 NoteVault 运行）。</td></tr>
+</table>
+
+<h2><span class="no">5</span>阶段路线图</h2>
+
+<table>
+  <tr><th style="width:90px">阶段</th><th style="width:230px">内容</th><th>涉及</th><th style="width:120px">前置条件</th></tr>
+  <tr>
+    <td><b>R0</b></td>
+    <td>本文档定案 + 拍板第 7 节决策项</td>
+    <td>无开发</td>
+    <td>—</td>
+  </tr>
+  <tr>
+    <td><b>R1</b></td>
+    <td><b>Issue #25 Phase 1</b>：Jira → NoteVault 直连只读（含 4.2 的多源调整）</td>
+    <td>NoteVault 开发（特性分支 + PR 流程）</td>
+    <td>确认 Jira 类型与凭据</td>
+  </tr>
+  <tr>
+    <td><b>R2</b></td>
+    <td><b>Agent 镜像层（零 NoteVault 开发）</b>：同步脚本（Jira→Linear、GitHub→Linear）+ 定时任务；Linear 官方 MCP 配置到 ZCode，日常可直接语音/命令建个人任务</td>
+    <td>本机脚本 + 定时配置</td>
+    <td><b>合规确认</b>；Linear Personal API Key</td>
+  </tr>
+  <tr>
+    <td><b>R3</b></td>
+    <td>NoteVault 多源扩展：Linear 拉取源（方案 C）+ 本地 Agent 写入 API（方案 A，独立 issue）</td>
+    <td>NoteVault 开发</td>
+    <td>R1 完成、R2 跑稳</td>
+  </tr>
+  <tr>
+    <td><b>R4</b></td>
+    <td>worklog 回写 Jira（原 Phase 2，显式确认 + 幂等）</td>
+    <td>NoteVault 开发</td>
+    <td>R1 稳定运行一段时间后</td>
+  </tr>
+</table>
+
+<div class="card">
+  <p><b>为什么 R2 排在 R3 前</b>：R2 不写一行业务代码就能把"手机随时看全部任务"这个最大痛点解决掉；R3 属于锦上添花，等 R1/R2 的数据口径稳定后再动 NoteVault，避免返工。</p>
+</div>
+
+<h2><span class="no">6</span>日常使用动线（示例）</h2>
+
+<table>
+  <tr><th style="width:120px">时段</th><th>动作</th><th style="width:190px">落在哪</th></tr>
+  <tr><td>早上</td><td>手机看 Linear Inbox：昨晚新镜像的 Jira 子任务、GitHub issue 通知、自己的待办</td><td><span class="chip linear">Linear</span></td></tr>
+  <tr><td>白天（公司）</td><td>按公司流程在 Jira 认领/推进/记录；个人临时事项顺手记进 Linear</td><td><span class="chip jira">Jira</span> + <span class="chip linear">Linear</span></td></tr>
+  <tr><td>后台</td><td>Agent 定时镜像：Jira/GitHub 增量 → Linear（15–30 分钟一次，工作时段）</td><td><span class="chip agent">Agent</span></td></tr>
+  <tr><td>开发时</td><td>NoteVault 周视图开在副屏：今天该做的任务（Jira 直连源 + Linear 源 + 本地任务）一目了然</td><td><span class="chip nv">NoteVault</span></td></tr>
+  <tr><td>下班前</td><td>NoteVault 记 worklog（日期 + 工时 + 内容）；周五/月末用周月视图复盘，统计完成数与工时</td><td><span class="chip nv">NoteVault</span></td></tr>
+  <tr><td>碎片想法</td><td>手机 Linear 速记 → 后续整理成任务；纯文本片段仍走 NoteVault 常用语</td><td><span class="chip linear">Linear</span> / <span class="chip nv">NoteVault</span></td></tr>
+</table>
+
+<h2><span class="no">7</span>风险与拍板项</h2>
+
+<h3>7.1 风险清单</h3>
+<table>
+  <tr><th style="width:170px">风险</th><th>影响</th><th>对策</th></tr>
+  <tr>
+    <td><span class="tag bad">合规</span> 公司数据出域</td>
+    <td>Jira 任务镜像到个人 Linear = 公司数据离开公司管控范围</td>
+    <td><b>动手前确认公司政策</b>（硬前提）；若不确定，先只做 R1（数据不出本机），R2 缓行；镜像字段最小化（标题/状态/日期/链接，不带描述全文与附件）</td>
+  </tr>
+  <tr>
+    <td><span class="tag warn">凭据</span> token 安全</td>
+    <td>Jira PAT / Linear API Key / Agent token 泄露</td>
+    <td>仅存本机（设置文件）、UI 打码、日志脱敏、Agent API 只绑 127.0.0.1 + token + 白名单命令</td>
+  </tr>
+  <tr>
+    <td><span class="tag warn">配额</span> Linear 免费档上限</td>
+    <td>活跃 issue 数量有限制（约 250，各资料口径略异）</td>
+    <td>养成"完成即归档"习惯；Jira 镜像条目随 Jira 状态 Done 自动归档</td>
+  </tr>
+  <tr>
+    <td><span class="tag warn">一致性</span> 双写冲突</td>
+    <td>同一任务在 Jira 与 Linear 各自被改</td>
+    <td>单向同步约定：Jira 镜像条目在 Linear 只读；状态以 Jira 为准，同步覆盖</td>
+  </tr>
+  <tr>
+    <td><span class="tag bad">API 变动</span></td>
+    <td>Linear / Jira API 或 MCP 升级导致脚本失效</td>
+    <td>同步脚本集中封装两端调用；失败时保留旧数据 + 显式报错（与 #25 同策略）</td>
+  </tr>
+</table>
+
+<h3>7.2 拍板清单（开发前逐项确认）</h3>
+<div class="card">
+  <ul class="check">
+    <li><b>合规</b>：公司政策是否允许把 Jira 任务元数据镜像到个人 Linear？（不确认 → R2 缓行，只做 R1）</li>
+    <li><b>Jira 类型</b>：Cloud 还是自建 Server/DC？（决定 REST 版本、认证方式、MCP 选型）</li>
+    <li><b>镜像字段</b>：是否接受第 3-Q1 的最小化字段集？有无必须带上的字段？</li>
+    <li><b>免费档上限</b>：Linear 免费 issue 上限是否可接受？是否需要升级付费档？</li>
+    <li><b>R3 顺序</b>：同意"C 先行（Linear 拉取）、A 跟进（Agent 写入 API）"的组合？</li>
+    <li><b>Issue #25 开发顺序</b>：确认按第 4.4 节建议答案执行后开分支开发？</li>
+  </ul>
+</div>
+
+<h2>参考链接</h2>
+<ul class="footnote">
+  <li>Linear 官方 MCP：<a href="https://linear.app/docs/mcp">linear.app/docs/mcp</a>（端点 <code>mcp.linear.app/mcp</code>，支持 Bearer API Key）</li>
+  <li>Linear API 与 Personal API Key：<a href="https://linear.app/docs/api-and-webhooks">linear.app/docs/api-and-webhooks</a></li>
+  <li>Linear GraphQL Schema（issueCreate 等 mutation）：Apollo Studio 公开 schema</li>
+  <li>Atlassian 官方远程 MCP（仅 Cloud）：<a href="https://www.atlassian.com/platform/mcp">atlassian.com/platform/mcp</a></li>
+  <li>社区 Jira MCP（支持 Server/DC + PAT）：<a href="https://github.com/sooperset/mcp-atlassian">sooperset/mcp-atlassian</a></li>
+  <li>Linear GitHub 集成（PR 关联为主）：<a href="https://linear.app/docs/github-integration">linear.app/docs/github-integration</a></li>
+  <li>NoteVault Issue #25：<a href="https://github.com/mazy699/notevault/issues/25">github.com/mazy699/notevault/issues/25</a></li>
+</ul>
+
+<p class="footnote">本文档为分析稿，不包含任何代码改动；结论经确认后再按 AGENTS.md 流程开分支开发。</p>
+
+</main>
+</body>
+</html>

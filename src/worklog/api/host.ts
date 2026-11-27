@@ -5,7 +5,9 @@
  * - 导出文件保存：桌面端弹系统对话框，Web 端浏览器下载
  */
 import { api, isTauri } from "../../api/client";
+import type { JiraConfigInput } from "../../../shared/types";
 import type { WlPersist } from "../data/persist";
+import type { JiraTransport } from "../data/sync/types";
 
 function b64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
@@ -48,6 +50,18 @@ export function createHostPersist(): WlPersist {
       const r = await api.wlDataInfo();
       return { dataDir: r.dataDir, dbFile: r.dbFile };
     },
+  };
+}
+
+/** Jira 宿主桥：配置与 REST 请求都由宿主处理，token 不进入前端数据层 */
+export function createJiraTransport(): JiraTransport {
+  return {
+    getConfig: () => api.wlJiraConfigGet(),
+    saveConfig: (cfg: JiraConfigInput) => api.wlJiraConfigSet(cfg),
+    clearConfig: async () => {
+      await api.wlJiraConfigClear();
+    },
+    request: (req) => api.wlJiraRequest(req),
   };
 }
 

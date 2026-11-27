@@ -14,7 +14,10 @@ import * as noteMod from "./note";
 import * as todoMod from "./todo";
 import * as demoMod from "./demo";
 import * as taskTypeMod from "./task-types";
+import * as jiraSyncMod from "./sync";
 import { addDaysStr, nowStr, weekMonday } from "./dates";
+import { DEFAULT_PROJECT_ID } from "../types";
+import type { JiraConfigInput, JiraConfigView } from "../../../shared/types";
 import type {
   AiConfig,
   AiTestResult,
@@ -58,6 +61,10 @@ export class DataService {
   private saveChain: Promise<void> = Promise.resolve();
   /** 宿主 AI 代理 fetch（没有则用浏览器原生 fetch） */
   private fetchImpl: typeof fetch | undefined;
+  /** Jira 宿主桥（配置 + REST 请求）；未注入时同步命令不可用 */
+  private jiraTransport: jiraSyncMod.JiraTransport | undefined;
+  /** 同一时间只允许一个同步任务 */
+  private jiraSyncInFlight: Promise<jiraSyncMod.JiraSyncResult> | null = null;
   /** ai.json 覆盖配置（启动时读入缓存，与原 Electron 行为等价） */
   private aiFileCache: aiMod.AiFileConfig | null = null;
   dataDir = "";
@@ -82,6 +89,11 @@ export class DataService {
   /** 注入宿主 AI 代理 fetch（跨宿主 CORS 兼容）；不注入则用原生 fetch */
   setFetchImpl(f: typeof fetch | undefined): void {
     this.fetchImpl = f;
+  }
+
+  /** 注入 Jira 宿主桥（配置存宿主文件，token 不经过数据层） */
+  setJiraTransport(t: jiraSyncMod.JiraTransport | undefined): void {
+    this.jiraTransport = t;
   }
 
   /** 等待所有挂起写盘完成 */
@@ -151,6 +163,12 @@ export class DataService {
       todo_delete_many: () => this.todoDeleteMany(Array.isArray(p.ids) ? p.ids.map(Number) : []),
       todo_convert: () => this.todoConvert(p as unknown as TodoConvertInput),
       todo_attach: () => this.todoAttachToTask(p as unknown as TodoAttachInput),
+      jira_config_get: () => this.jiraConfigGet(),
+      jira_config_save: () => this.jiraConfigSave(p as unknown as JiraConfigInput),
+      jira_config_clear: () => this.jiraConfigClear(),
+      jira_test: () => this.jiraTest(),
+      jira_sync: () => this.jiraSync({ full: p.full === true }),
+      jira_status: () => this.jiraStatus(),
     };
     const handler = routes[channel];
     if (!handler) throw new Error(`未知命令: ${channel}`);
@@ -790,12 +808,109 @@ export class DataService {
     return updated;
   }
 
+  // ---------- Jira 只读同步（Issue #25） ----------
+  private requireJiraTransport(): jiraSyncMod.JiraTransport {
+    if (!this.jiraTransport) throw new Error("Jira 同步通道未初始化");
+    return this.jiraTransport;
+  }
+
+  async jiraConfigGet(): Promise<JiraConfigView> {
+    return this.requireJiraTransport().getConfig();
+  }
+
+  async jiraConfigSave(input: JiraConfigInput): Promise<JiraConfigView> {
+    return this.requireJiraTransport().saveConfig(input);
+  }
+
+  async jiraConfigClear(): Promise<void> {
+    await this.requireJiraTransport().clearConfig();
+    // 只清同步状态，不删除已导入的任务与本地记录
+    run(this.db, "DELETE FROM setting WHERE key IN ('jira_last_sync','jira_last_result')");
+    this.save();
+  }
+
+  async jiraTest(): Promise<jiraSyncMod.JiraTestResult> {
+    return jiraSyncMod.testConnection(this.requireJiraTransport());
+  }
+
+  jiraStatus(): jiraSyncMod.JiraSyncStatus {
+    const lastSync = this.settingsGet("jira_last_sync");
+    const raw = this.settingsGet("jira_last_result");
+    let lastResult: jiraSyncMod.JiraSyncResult | null = null;
+    if (raw) {
+      try {
+        lastResult = JSON.parse(raw) as jiraSyncMod.JiraSyncResult;
+      } catch {
+        lastResult = null;
+      }
+    }
+    return { lastSync, lastResult };
+  }
+
+  /** 手动/自动同步共用入口；并发调用复用同一个进行中的任务 */
+  async jiraSync(opts: { full?: boolean } = {}): Promise<jiraSyncMod.JiraSyncResult> {
+    if (this.jiraSyncInFlight) return this.jiraSyncInFlight;
+    this.jiraSyncInFlight = this.runJiraSync(opts).finally(() => {
+      this.jiraSyncInFlight = null;
+    });
+    return this.jiraSyncInFlight;
+  }
+
+  private async runJiraSync(opts: { full?: boolean }): Promise<jiraSyncMod.JiraSyncResult> {
+    const transport = this.requireJiraTransport();
+    const at = nowStr();
+    const lastSync = this.settingsGet("jira_last_sync");
+    const full = opts.full === true || !lastSync;
+    try {
+      const cfg = await transport.getConfig();
+      if (!cfg.baseUrl) throw new Error("尚未配置 Jira 地址");
+      if (!cfg.hasToken) throw new Error("尚未配置 Jira Token");
+
+      const since = full ? null : jiraSyncMod.sinceFromLast(lastSync, 5);
+      const { issues, warnings } = await jiraSyncMod.fetchIssues(transport, cfg, { since });
+      const mapped = issues
+        .map((issue) => jiraSyncMod.mapIssue(issue, cfg.baseUrl))
+        .filter((m) => m.externalId !== "");
+      const applied = jiraSyncMod.applyJiraSync(this.db, mapped, { full });
+
+      const result: jiraSyncMod.JiraSyncResult = {
+        ok: true,
+        at,
+        full,
+        fetched: mapped.length,
+        ...applied,
+        warnings,
+      };
+      settingsMod.setSetting(this.db, "jira_last_sync", at);
+      settingsMod.setSetting(this.db, "jira_last_result", JSON.stringify(result));
+      this.save();
+      return result;
+    } catch (e) {
+      const result: jiraSyncMod.JiraSyncResult = {
+        ok: false,
+        at,
+        full,
+        fetched: 0,
+        created: 0,
+        updated: 0,
+        skipped: 0,
+        missing: 0,
+        warnings: [],
+        error: jiraSyncMod.errText(e),
+      };
+      settingsMod.setSetting(this.db, "jira_last_result", JSON.stringify(result));
+      this.save();
+      throw e;
+    }
+  }
+
   // ---------- 导出/导入 ----------
   private exportAll(): unknown {
     return {
       version: 1,
       exportedAt: nowStr(),
       tasks: q(this.db, "SELECT * FROM task ORDER BY id"),
+      projects: q(this.db, "SELECT * FROM project ORDER BY id"),
       entries: q(this.db, "SELECT * FROM work_entry ORDER BY id"),
       notes: q(this.db, "SELECT * FROM daily_note ORDER BY date"),
       todos: q(this.db, "SELECT * FROM todo ORDER BY id"),
@@ -807,6 +922,7 @@ export class DataService {
   private importAll(text: string): void {
     let data: {
       tasks?: unknown[];
+      projects?: unknown[];
       entries?: unknown[];
       notes?: unknown[];
       todos?: unknown[];
@@ -829,13 +945,54 @@ export class DataService {
       run(this.db, "DELETE FROM daily_note");
       run(this.db, "DELETE FROM todo");
       run(this.db, "DELETE FROM setting");
-      for (const t of tasks) {
-        const r = t as Record<string, unknown>;
+      // 项目：保留默认项目，导入文件中的项目按 id 覆盖；旧备份无 projects 时不影响
+      for (const p of data.projects ?? []) {
+        const r = p as Record<string, unknown>;
         run(
           this.db,
-          `INSERT INTO task (id, title, description, type, priority, status, estimate_days, window_start, window_end, created_at, updated_at, completed_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-          [r.id, r.title, r.description ?? "", r.type, r.priority, r.status, r.estimate_days ?? null, r.window_start ?? null, r.window_end ?? null, r.created_at, r.updated_at, r.completed_at ?? null]
+          "INSERT OR REPLACE INTO project (id, name, sort, created_at) VALUES (?,?,?,?)",
+          [r.id, r.name, r.sort ?? 0, r.created_at ?? nowStr()]
+        );
+      }
+      const projectIds = new Set(
+        q<{ id: number }>(this.db, "SELECT id FROM project").map((r) => Number(r.id))
+      );
+      for (const t of tasks) {
+        const r = t as Record<string, unknown>;
+        const wantedProject = Number(r.project_id ?? DEFAULT_PROJECT_ID);
+        const projectId = projectIds.has(wantedProject) ? wantedProject : DEFAULT_PROJECT_ID;
+        run(
+          this.db,
+          `INSERT INTO task (
+             id, title, description, type, priority, status, estimate_days, window_start, window_end,
+             project_id, created_at, updated_at, completed_at,
+             external_source, external_id, external_url, external_parent_key, external_parent_summary,
+             external_status, external_updated, external_synced_at, external_missing
+           ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          [
+            r.id,
+            r.title,
+            r.description ?? "",
+            r.type,
+            r.priority,
+            r.status,
+            r.estimate_days ?? null,
+            r.window_start ?? null,
+            r.window_end ?? null,
+            projectId,
+            r.created_at,
+            r.updated_at,
+            r.completed_at ?? null,
+            r.external_source ?? null,
+            r.external_id ?? null,
+            r.external_url ?? null,
+            r.external_parent_key ?? null,
+            r.external_parent_summary ?? null,
+            r.external_status ?? null,
+            r.external_updated ?? null,
+            r.external_synced_at ?? null,
+            r.external_missing ?? 0,
+          ]
         );
       }
       for (const e of entries) {

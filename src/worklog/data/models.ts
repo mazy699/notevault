@@ -1,4 +1,5 @@
 import type {
+  ExternalSource,
   Task,
   TaskPriority,
   TaskStatus,
@@ -36,6 +37,15 @@ export interface TaskRow {
   created_at: string;
   updated_at: string;
   completed_at: string | null;
+  external_source: string | null;
+  external_id: string | null;
+  external_url: string | null;
+  external_parent_key: string | null;
+  external_parent_summary: string | null;
+  external_status: string | null;
+  external_updated: string | null;
+  external_synced_at: string | null;
+  external_missing: number;
 }
 
 export interface ProjectRow {
@@ -70,6 +80,15 @@ export function rowToTask(r: TaskRow): Task {
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     completedAt: r.completed_at,
+    externalSource: (r.external_source as ExternalSource | null) ?? null,
+    externalId: r.external_id ?? null,
+    externalUrl: r.external_url ?? null,
+    externalParentKey: r.external_parent_key ?? null,
+    externalParentSummary: r.external_parent_summary ?? null,
+    externalStatus: r.external_status ?? null,
+    externalUpdated: r.external_updated ?? null,
+    externalSyncedAt: r.external_synced_at ?? null,
+    externalMissing: Number(r.external_missing ?? 0) === 1,
   };
 }
 

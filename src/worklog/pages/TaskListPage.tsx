@@ -3,6 +3,7 @@ import { useTaskList, useProjects, useTaskTypes } from "../queries/hooks";
 import { useUi } from "../stores/ui";
 import { Select } from "../components/common/Select";
 import { QuickStatusActions } from "../components/task/QuickStatusActions";
+import { ExternalBadge } from "../components/task/ExternalBadge";
 import {
   DEFAULT_TASK_TYPES,
   PRIORITY_LABELS,
@@ -75,19 +76,26 @@ export function TaskListPage() {
                 key={t.id}
                 className="grid grid-cols-[minmax(0,1fr)_140px_136px] items-center gap-4 border-b border-gray-100 px-4 py-2.5 text-left last:border-b-0 hover:bg-blue-50/40"
               >
-                <button type="button" onClick={() => openTask(t.id)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-                  <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: taskTypeColor(taskTypes, t.type) }} />
-                  <div className="min-w-0 flex-1">
-                    <div className={`truncate text-sm font-medium ${t.status === "cancelled" ? "text-gray-400 line-through" : "text-gray-800"}`}>
-                      {t.title}
+                <div className="min-w-0">
+                  <button type="button" onClick={() => openTask(t.id)} className="flex w-full min-w-0 items-center gap-3 text-left">
+                    <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: taskTypeColor(taskTypes, t.type) }} />
+                    <div className="min-w-0 flex-1">
+                      <div className={`truncate text-sm font-medium ${t.status === "cancelled" ? "text-gray-400 line-through" : "text-gray-800"}`}>
+                        {t.title}
+                      </div>
+                      <div className="text-[11px] text-gray-400">
+                        {projectNameById.get(t.projectId) ? `${projectNameById.get(t.projectId)} · ` : ""}
+                        {taskTypeLabel(taskTypes, t.type)} · 优先级 {PRIORITY_LABELS[t.priority]}
+                        {t.lastActivity ? ` · 最近活动 ${t.lastActivity}` : " · 尚无记录"}
+                      </div>
                     </div>
-                    <div className="text-[11px] text-gray-400">
-                      {projectNameById.get(t.projectId) ? `${projectNameById.get(t.projectId)} · ` : ""}
-                      {taskTypeLabel(taskTypes, t.type)} · 优先级 {PRIORITY_LABELS[t.priority]}
-                      {t.lastActivity ? ` · 最近活动 ${t.lastActivity}` : " · 尚无记录"}
+                  </button>
+                  {t.externalSource && (
+                    <div className="mt-0.5 pl-6">
+                      <ExternalBadge task={t} showParent />
                     </div>
-                  </div>
-                </button>
+                  )}
+                </div>
                 <div className="text-right text-[11px]">
                   {t.status !== "in_progress" && t.status !== "done" && (
                     <div className="mb-1 text-gray-500">

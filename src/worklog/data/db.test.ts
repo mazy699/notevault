@@ -10,7 +10,7 @@ describe("存储层", () => {
     const db = await freshDb();
     migrate(db);
     const v = Number(db.exec("PRAGMA user_version")[0].values[0][0]);
-    expect(v).toBe(8);
+    expect(v).toBe(9);
   });
 
   it("导出字节后重新打开数据仍在", async () => {

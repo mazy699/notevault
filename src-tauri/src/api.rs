@@ -590,6 +590,33 @@ pub fn dispatch(app: &tauri::AppHandle, cmd: &str, payload: &Value) -> Result<Va
             Ok(json!({ "status": status, "body": trimmed }))
         }
 
+        // ---------------- Jira 只读同步（Issue #25）：token 只在宿主侧 ----------------
+        "wl_jira_config_get" => {
+            let dir = crate::wlstore::worklog_data_dir();
+            Ok(crate::jirastore::view(&crate::jirastore::load(&dir)))
+        }
+        "wl_jira_config_set" => {
+            let dir = crate::wlstore::worklog_data_dir();
+            let existing = crate::jirastore::load(&dir);
+            let cfg = crate::jirastore::apply_input(existing, &p)?;
+            crate::jirastore::save(&dir, &cfg)?;
+            Ok(crate::jirastore::view(&cfg))
+        }
+        "wl_jira_config_clear" => {
+            let dir = crate::wlstore::worklog_data_dir();
+            crate::jirastore::clear(&dir);
+            Ok(Value::Null)
+        }
+        "wl_jira_request" => {
+            let dir = crate::wlstore::worklog_data_dir();
+            let cfg = crate::jirastore::load(&dir);
+            let path = p.get("path").and_then(|v| v.as_str()).unwrap_or("");
+            let method = p.get("method").and_then(|v| v.as_str()).unwrap_or("GET");
+            let body = p.get("body").and_then(|v| v.as_str());
+            let (status, text) = crate::jirastore::request(&cfg, path, method, body)?;
+            Ok(json!({ "status": status, "body": text }))
+        }
+
         _ => Err(format!("未知命令: {}", cmd)),
     }
 }

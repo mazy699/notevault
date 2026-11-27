@@ -1,7 +1,20 @@
 /**
  * 宿主适配层：同一套 call(cmd, payload) 契约自动路由到 Tauri invoke 或 HTTP API。
  */
-import type { FileContent, FileNode, GitBranchInfo, PwDb, SearchResult, SnippetDb, Snapshot, VaultInfo } from "../../shared/types";
+import type {
+  FileContent,
+  FileNode,
+  GitBranchInfo,
+  JiraConfigInput,
+  JiraConfigView,
+  JiraHttpRequest,
+  JiraHttpResponse,
+  PwDb,
+  SearchResult,
+  SnippetDb,
+  Snapshot,
+  VaultInfo,
+} from "../../shared/types";
 
 export function isTauri(): boolean {
   return typeof window !== "undefined" && !!window.__TAURI_INTERNALS__;
@@ -82,6 +95,12 @@ export const api = {
   /** AI 代理：宿主侧发起 HTTP（规避 WebView/浏览器 CORS），仅允许 http(s) */
   wlAiProxy: (req: { url: string; method?: string; headers?: Record<string, string>; body?: string }) =>
     call<{ status: number; body: string }>("wl_ai_proxy", req),
+
+  // ---- Jira 只读同步：token 存宿主文件，前端只拿掩码视图 ----
+  wlJiraConfigGet: () => call<JiraConfigView>("wl_jira_config_get", {}),
+  wlJiraConfigSet: (cfg: JiraConfigInput) => call<JiraConfigView>("wl_jira_config_set", { ...cfg }),
+  wlJiraConfigClear: () => call<null>("wl_jira_config_clear", {}),
+  wlJiraRequest: (req: JiraHttpRequest) => call<JiraHttpResponse>("wl_jira_request", { ...req }),
 };
 
 /**

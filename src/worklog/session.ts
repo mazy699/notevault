@@ -3,13 +3,14 @@
  * 首次进入工作台时初始化；失败可重试。
  */
 import { DataService } from "./data";
-import { createHostPersist, makeAiFetch } from "./api/host";
+import { createHostPersist, createJiraTransport, makeAiFetch } from "./api/host";
 
 let servicePromise: Promise<DataService> | null = null;
 
 async function create(): Promise<DataService> {
   const svc = new DataService();
   svc.setFetchImpl(makeAiFetch());
+  svc.setJiraTransport(createJiraTransport());
   await svc.init(createHostPersist());
   return svc;
 }

@@ -113,3 +113,26 @@ ALTER TABLE todo ADD COLUMN linked_at TEXT;
 export const MIGRATION_8 = `
 ALTER TABLE report ADD COLUMN summary_content TEXT NOT NULL DEFAULT '';
 `;
+
+/**
+ * 0009：外部任务来源（Issue #25，Phase 1 只读同步）
+ * - 以 (external_source, external_id) 作为幂等键；本地任务两列为 NULL
+ * - 本地 work_entry 永远不被同步覆盖
+ */
+export const MIGRATION_9 = `
+ALTER TABLE task ADD COLUMN external_source TEXT;
+ALTER TABLE task ADD COLUMN external_id TEXT;
+ALTER TABLE task ADD COLUMN external_url TEXT;
+ALTER TABLE task ADD COLUMN external_parent_key TEXT;
+ALTER TABLE task ADD COLUMN external_parent_summary TEXT;
+ALTER TABLE task ADD COLUMN external_status TEXT;
+ALTER TABLE task ADD COLUMN external_updated TEXT;
+ALTER TABLE task ADD COLUMN external_synced_at TEXT;
+ALTER TABLE task ADD COLUMN external_missing INTEGER NOT NULL DEFAULT 0;
+
+CREATE UNIQUE INDEX idx_task_external
+  ON task(external_source, external_id)
+  WHERE external_id IS NOT NULL;
+CREATE INDEX idx_task_external_state
+  ON task(external_source, external_missing, status);
+`;

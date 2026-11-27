@@ -2,6 +2,7 @@ import { useUi } from "../stores/ui";
 import { useWeekMatrix, useOnboardingStatus, useInvalidateAll, useTaskTypes } from "../queries/hooks";
 import { api } from "../api/client";
 import { WeekGrid } from "../components/calendar/WeekGrid";
+import { JiraTodoLane } from "../components/calendar/JiraTodoLane";
 import { addDaysStr, todayStr, weekMonday } from "../lib/date";
 import { DEFAULT_TASK_TYPES } from "../lib/colors";
 
@@ -114,6 +115,7 @@ export function WeekViewPage() {
             }
           />
         )}
+        {visibleData && <JiraTodoLane tasks={visibleData.externalUnscheduled} />}
         {visibleData && visibleData.rows.length > 0 && (
           <div className="mt-2 px-1 text-[11px] leading-5 text-gray-400">
             色块 = 当天有工作记录（只涂实际工作的天）；悬浮任一色块可高亮该任务的全部参与日期；点击色块进入任务详情，点击空白格直接补记录；浅蓝虚线为期望时间窗。

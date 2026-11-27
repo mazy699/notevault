@@ -17,6 +17,8 @@ import { api } from "../api/client";
 import { DEFAULT_TASK_TYPES, taskTypeOptions } from "../lib/colors";
 import { Select } from "../components/common/Select";
 import { DEFAULT_PROJECT_ID, type TaskTypeDefinition } from "../types";
+import type { JiraConfigInput, JiraConfigView } from "../../../shared/types";
+import type { JiraSyncStatus } from "../data/sync/types";
 
 export function SettingsPage() {
   const holidayStatus = useHolidayStatus();
@@ -131,6 +133,16 @@ export function SettingsPage() {
             兼容 OpenAI 协议（DeepSeek / 智谱 GLM / Kimi / OpenAI / 内网 Ollama 等）。数据只在你点击"生成"时发送；敏感环境可将接口地址指向内网模型。
           </p>
           <AiSection />
+        </section>
+
+        {/* Jira 同步 */}
+        <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+          <h2 className="mb-1 text-sm font-semibold text-gray-700">Jira 同步（只读）</h2>
+          <p className="mb-3 text-xs leading-5 text-gray-400">
+            把公司 Jira 中分配给你的子任务 / Bug 导入任务列表、周视图与月视图；只读，不回写 Jira。
+            同步后很少需要手动建任务，但离线 / 临时任务仍可手动创建。
+          </p>
+          <JiraSection />
         </section>
 
         {/* 数据与备份 */}
@@ -507,6 +519,271 @@ function AiSection() {
         进阶：在数据目录下放置 ai.json（字段 baseUrl / apiKey / model / promptTemplate），非空字段将覆盖以上 UI
         配置，promptTemplate 可自定义周报格式（需包含 {"{{DATA}}"} 占位符）。
       </p>
+    </div>
+  );
+}
+
+/** Jira 只读同步配置：token 由宿主保存，前端只拿到掩码 */
+function JiraSection() {
+  const [cfg, setCfg] = useState<JiraConfigView | null>(null);
+  const [token, setToken] = useState("");
+  const [status, setStatus] = useState<JiraSyncStatus | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; text: string } | null>(null);
+  const [savedHint, setSavedHint] = useState(false);
+
+  const alertErr = (e: unknown): void => window.alert(e instanceof Error ? e.message : String(e));
+
+  const reload = async (): Promise<void> => {
+    const [c, s] = await Promise.all([api.jiraConfigGet(), api.jiraStatus()]);
+    setCfg(c);
+    setStatus(s);
+  };
+
+  useEffect(() => {
+    if (loaded) return;
+    setLoaded(true);
+    void reload().catch(alertErr);
+  }, [loaded]);
+
+  if (!cfg) return <div className="text-xs text-gray-400">加载中…</div>;
+
+  const update = (patch: Partial<JiraConfigView>): void =>
+    setCfg((c) => (c ? { ...c, ...patch } : c));
+
+  const save = async (): Promise<void> => {
+    setSaving(true);
+    try {
+      const input: JiraConfigInput = {
+        baseUrl: cfg.baseUrl,
+        authType: cfg.authType,
+        email: cfg.email,
+        jql: cfg.jql,
+        includeStorySubtasks: cfg.includeStorySubtasks,
+        intervalMinutes: cfg.intervalMinutes,
+        enabled: cfg.enabled,
+        token: token.trim() ? token.trim() : null,
+      };
+      const next = await api.jiraConfigSave(input);
+      setCfg(next);
+      setToken("");
+      setSavedHint(true);
+      setTimeout(() => setSavedHint(false), 1500);
+    } catch (e) {
+      alertErr(e);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const test = async (): Promise<void> => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const r = await api.jiraTest();
+      setTestResult({ ok: r.ok, text: r.message });
+    } catch (e) {
+      setTestResult({ ok: false, text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const runSync = async (full: boolean): Promise<void> => {
+    if (
+      full &&
+      !window.confirm(
+        "全量同步会重新拉取全部匹配的 issue，并把 Jira 中已消失的任务标记为“已不可见”（不会删除任务与本地记录）。继续？"
+      )
+    ) {
+      return;
+    }
+    setSyncing(true);
+    try {
+      const r = await api.jiraSync(full);
+      await reload();
+      const lines = [`拉取 ${r.fetched} 条`, `新增 ${r.created}`, `更新 ${r.updated}`, `跳过 ${r.skipped}`];
+      if (r.missing) lines.push(`标记消失 ${r.missing}`);
+      if (r.warnings.length) lines.push(`警告：${r.warnings.join("；")}`);
+      window.alert(`同步完成：${lines.join("，")}`);
+    } catch (e) {
+      alertErr(e);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const clear = async (): Promise<void> => {
+    if (!window.confirm("清除 Jira 连接配置与 Token？已导入的任务和本地工作记录不会被删除。")) return;
+    try {
+      await api.jiraConfigClear();
+      setToken("");
+      setTestResult(null);
+      await reload();
+    } catch (e) {
+      alertErr(e);
+    }
+  };
+
+  const inputCls =
+    "mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none";
+
+  return (
+    <div className="space-y-3">
+      <label className="flex items-center gap-2 text-sm text-gray-600">
+        <input
+          type="checkbox"
+          checked={cfg.enabled}
+          onChange={(e) => update({ enabled: e.target.checked })}
+        />
+        启用自动同步（应用打开期间按间隔拉取，关闭应用即停止）
+      </label>
+
+      <div className="grid grid-cols-2 gap-3">
+        <label className="text-xs text-gray-500">
+          Jira 地址（含 context path，不要带 /rest）
+          <input
+            value={cfg.baseUrl}
+            onChange={(e) => update({ baseUrl: e.target.value })}
+            placeholder="https://jira.company.com"
+            className={inputCls}
+          />
+        </label>
+        <label className="text-xs text-gray-500">
+          认证方式
+          <Select
+            value={cfg.authType}
+            onChange={(v) => update({ authType: v as JiraConfigView["authType"] })}
+            options={[
+              { value: "pat", label: "Server / DC · PAT" },
+              { value: "cloud", label: "Cloud · 邮箱 + API Token" },
+            ]}
+            className="mt-1 w-full"
+          />
+        </label>
+        <label className="text-xs text-gray-500">
+          邮箱（仅 Cloud）
+          <input
+            value={cfg.email}
+            onChange={(e) => update({ email: e.target.value })}
+            placeholder="you@company.com"
+            className={inputCls}
+          />
+        </label>
+        <label className="text-xs text-gray-500">
+          Token / PAT
+          <input
+            type="password"
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            placeholder={
+              cfg.hasToken ? `已保存 ****${cfg.tokenHint ?? ""}，留空表示不修改` : "粘贴 API Token 或 PAT"
+            }
+            className={`${inputCls} font-mono text-[13px]`}
+          />
+        </label>
+        <label className="text-xs text-gray-500">
+          同步间隔（分钟，5–240）
+          <input
+            type="number"
+            min={5}
+            max={240}
+            value={cfg.intervalMinutes}
+            onChange={(e) => update({ intervalMinutes: Number(e.target.value) || 15 })}
+            className={inputCls}
+          />
+        </label>
+        <label className="flex items-end gap-2 pb-1 text-xs text-gray-500">
+          <input
+            type="checkbox"
+            checked={cfg.includeStorySubtasks}
+            onChange={(e) => update({ includeStorySubtasks: e.target.checked })}
+          />
+          同步“我负责的 Story”下的全部子任务
+        </label>
+      </div>
+
+      <label className="block text-xs text-gray-500">
+        JQL（高级；留空使用默认）
+        <textarea
+          value={cfg.jql}
+          onChange={(e) => update({ jql: e.target.value })}
+          rows={2}
+          className="mt-1 w-full resize-y rounded border border-gray-300 px-2 py-1.5 font-mono text-[12px] focus:border-blue-500 focus:outline-none"
+        />
+      </label>
+      <p className="text-[11px] leading-5 text-gray-400">
+        默认：<code>assignee = currentUser() AND issuetype in (Sub-task, Bug) ORDER BY updated ASC</code>。
+        Cloud 地址填 <code>https://xxx.atlassian.net</code>；只同步子任务可删掉 Bug。测试与同步使用已保存的配置，
+        修改后请先点“保存配置”。Token 只存本机 <code>%APPDATA%/worklog/jira.json</code>，不进数据库、不进 JSON
+        导出；请求由宿主代发，前端只拿掩码。
+      </p>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          onClick={() => void save()}
+          disabled={saving}
+          className="rounded bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+        >
+          {saving ? "保存中…" : "保存配置"}
+        </button>
+        <button
+          onClick={() => void test()}
+          disabled={testing}
+          className="rounded border border-gray-300 px-4 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+        >
+          {testing ? "测试中…" : "测试连接"}
+        </button>
+        <button
+          onClick={() => void runSync(false)}
+          disabled={syncing}
+          className="rounded border border-gray-300 px-4 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+        >
+          {syncing ? "同步中…" : "立即同步"}
+        </button>
+        <button
+          onClick={() => void runSync(true)}
+          disabled={syncing}
+          className="rounded border border-gray-300 px-4 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+        >
+          全量同步
+        </button>
+        <button
+          onClick={() => void clear()}
+          className="rounded border border-gray-200 px-3 py-1.5 text-sm text-red-500 hover:bg-red-50"
+        >
+          清除配置
+        </button>
+        {savedHint && <span className="text-xs text-green-600">已保存 ✓</span>}
+      </div>
+
+      {testResult && (
+        <div className={`text-xs ${testResult.ok ? "text-green-600" : "text-red-500"}`}>
+          {testResult.text}
+        </div>
+      )}
+
+      <div className="rounded bg-gray-50 px-3 py-2 text-xs text-gray-500">
+        {status?.lastSync ? <span>上次同步：{status.lastSync}</span> : <span>尚未同步</span>}
+        {status?.lastResult && (
+          <span className={status.lastResult.ok ? "ml-3 text-green-600" : "ml-3 text-red-500"}>
+            {status.lastResult.ok
+              ? `拉取 ${status.lastResult.fetched} · 新增 ${status.lastResult.created} · 更新 ${status.lastResult.updated} · 跳过 ${status.lastResult.skipped}${
+                  status.lastResult.missing ? ` · 消失 ${status.lastResult.missing}` : ""
+                }`
+              : `失败：${status.lastResult.error ?? "未知错误"}`}
+          </span>
+        )}
+      </div>
+
+      {status?.lastResult?.warnings?.length ? (
+        <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-700">
+          {status.lastResult.warnings.join("；")}
+        </div>
+      ) : null}
     </div>
   );
 }

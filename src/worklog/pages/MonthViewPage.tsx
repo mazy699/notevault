@@ -36,7 +36,9 @@ export function MonthViewPage() {
           )}
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-[11px] text-gray-400">点击任务查看详情，点击日期查看当天详情；悬浮任务可高亮其全部参与日期</span>
+          <span className="text-[11px] text-gray-400">
+            实心 = 已记录，虚线 = Jira 计划；点击任务查看详情，点击日期查看当天详情
+          </span>
           {data && (
             <span className="rounded bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
               本月工作日 {data.workdays} 天

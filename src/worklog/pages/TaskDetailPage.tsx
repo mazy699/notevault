@@ -11,6 +11,7 @@ import {
   taskTypeOptions,
 } from "../lib/colors";
 import { Select } from "../components/common/Select";
+import { ExternalBadge } from "../components/task/ExternalBadge";
 import { DEFAULT_PROJECT_ID } from "../types";
 import { todayStr, weekdayCN } from "../lib/date";
 import type { TaskPriority, TaskStatus } from "../types";
@@ -155,6 +156,22 @@ export function TaskDetailPage() {
             />
           </div>
 
+          {task.externalSource && (
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <ExternalBadge task={task} showParent />
+              <span className="text-[11px] text-gray-400">
+                标题 / 状态 / 日期以 Jira 为准，下次同步会覆盖；本地工作记录不受影响
+              </span>
+            </div>
+          )}
+
+          {task.externalMissing && (
+            <div className="mb-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-700">
+              该任务在上次全量同步时已不在 Jira 结果中（可能已转派 / 关闭 / 删除）。任务与本地记录都保留；
+              如确认不再需要，可在下方手动归档。
+            </div>
+          )}
+
           <div className="grid grid-cols-3 gap-3">
             <div className="text-xs text-gray-500">
               所属项目
@@ -215,6 +232,11 @@ export function TaskDetailPage() {
               </span>
             )}
             <span>最近活动 {data.stats.lastActivity ?? "无"}</span>
+            {task.externalSource && (
+              <span className="text-gray-400">
+                Jira 状态 {task.externalStatus ?? "—"} · 同步于 {task.externalSyncedAt ?? "—"}
+              </span>
+            )}
           </div>
 
           <label className="mt-3 block text-xs text-gray-500">

@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type EntryCreateInput, type EntryUpdatePatch } from "../api/client";
 import type {
@@ -31,6 +32,58 @@ export const qk = {
 export function useInvalidateAll(): () => Promise<void> {
   const qc = useQueryClient();
   return () => qc.invalidateQueries();
+}
+
+/**
+ * Jira 自动同步：工作台打开期间按配置间隔检查；页面隐藏时跳过。
+ * 失败只写控制台，不打断使用；详细状态在设置页查看。
+ */
+export function useJiraAutoSync(): void {
+  const qc = useQueryClient();
+  const running = useRef(false);
+  const lastAttempt = useRef(0);
+
+  useEffect(() => {
+    let disposed = false;
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    const tick = async (): Promise<void> => {
+      if (disposed || running.current) return;
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      running.current = true;
+      try {
+        const cfg = await api.jiraConfigGet();
+        if (!cfg.enabled || !cfg.hasToken || !cfg.baseUrl) return;
+        const intervalMs = cfg.intervalMinutes * 60_000;
+        const status = await api.jiraStatus();
+        if (status.lastSync) {
+          const elapsed = Date.now() - new Date(status.lastSync.replace(" ", "T")).getTime();
+          if (Number.isFinite(elapsed) && elapsed < intervalMs) return;
+        }
+        // 失败后也按间隔退避，避免每分钟重试同一个 401
+        if (Date.now() - lastAttempt.current < intervalMs) return;
+        lastAttempt.current = Date.now();
+        await api.jiraSync(false);
+        await qc.invalidateQueries();
+      } catch (e) {
+        console.warn("[worklog] Jira 自动同步失败", e);
+      } finally {
+        running.current = false;
+      }
+    };
+
+    void tick();
+    timer = setInterval(() => void tick(), 60_000);
+    const onVisible = (): void => {
+      if (document.visibilityState === "visible") void tick();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      disposed = true;
+      if (timer) clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [qc]);
 }
 
 export function useWeekMatrix(date: string) {

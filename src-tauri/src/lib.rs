@@ -1,6 +1,7 @@
 //! NoteVault 桌面宿主（Tauri 2）
 pub mod api;
 pub mod fsops;
+pub mod jirastore;
 pub mod pwcrypto;
 pub mod pwstore;
 pub mod snippetstore;

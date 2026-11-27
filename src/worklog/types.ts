@@ -5,6 +5,9 @@ export type TaskType = string;
 export type TaskPriority = "high" | "medium" | "low";
 export type TaskStatus = "todo" | "in_progress" | "on_hold" | "done" | "cancelled";
 
+/** 外部任务来源（只读同步）；本地任务为 null */
+export type ExternalSource = "jira" | "linear" | "github";
+
 export interface TaskTypeDefinition {
   id: string;
   label: string;
@@ -37,6 +40,20 @@ export interface Task {
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
+  /** 外部来源（只读同步）；本地任务为 null */
+  externalSource: ExternalSource | null;
+  /** 外部系统内的唯一键，如 Jira 的 PROJ-123 */
+  externalId: string | null;
+  externalUrl: string | null;
+  externalParentKey: string | null;
+  externalParentSummary: string | null;
+  /** 外部系统原始状态名（本地 status 是映射后的结果） */
+  externalStatus: string | null;
+  /** 外部系统更新时间，用于增量与跳过无变化项 */
+  externalUpdated: string | null;
+  externalSyncedAt: string | null;
+  /** 上次全量同步时在外部系统已不可见（不自动删除） */
+  externalMissing: boolean;
 }
 
 export interface WorkEntry {
@@ -92,6 +109,8 @@ export interface WeekMatrix {
   weekStart: string;
   days: DayMeta[];
   rows: TaskRow[];
+  /** 外部来源、未排期（无时间窗）的待办，单独成区，不挤进甘特矩阵 */
+  externalUnscheduled: Task[];
 }
 
 export interface Chip {
@@ -99,11 +118,18 @@ export interface Chip {
   title: string;
   type: TaskType;
   status: TaskStatus;
+  /** true = 外部来源的计划日期（虚线展示），false/缺省 = 已记录 */
+  planned?: boolean;
+  externalSource?: ExternalSource | null;
+  externalId?: string | null;
+  externalMissing?: boolean;
 }
 
 export interface MonthDay {
   date: string;
   chips: Chip[];
+  /** 外部来源的计划项（与已记录 chips 分层展示） */
+  plans: Chip[];
 }
 
 export interface MonthOverview {

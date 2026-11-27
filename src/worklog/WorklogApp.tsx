@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Inbox, ListTodo, NotebookPen, Plus, Settings, Sunrise } from "lucide-react";
 import { useUi } from "./stores/ui";
+import { useJiraAutoSync } from "./queries/hooks";
 import { WeekViewPage } from "./pages/WeekViewPage";
 import { MonthViewPage } from "./pages/MonthViewPage";
 import { MorningPage } from "./pages/MorningPage";
@@ -33,6 +34,7 @@ export default function WorklogApp() {
   const page = useUi((s) => s.page);
   const nav = useUi((s) => s.nav);
   const setQuickOpen = useUi((s) => s.setQuickOpen);
+  useJiraAutoSync();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

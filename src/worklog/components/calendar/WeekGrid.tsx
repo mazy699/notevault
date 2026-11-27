@@ -4,6 +4,7 @@ import { useDemoSeed, useTaskTypes } from "../../queries/hooks";
 import { DEFAULT_TASK_TYPES, rgba, taskTypeColor } from "../../lib/colors";
 import { EFFORT_ALPHA, EFFORT_ALPHA_DARK, effortBucket, fmtHours } from "../../lib/effort";
 import { todayStr } from "../../lib/date";
+import { ExternalBadge } from "../task/ExternalBadge";
 
 /**
  * 周视图：简化甘特。
@@ -120,6 +121,11 @@ export function WeekGrid({
                 <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
                 <span className="truncate text-[13px] font-medium text-gray-800">{row.task.title}</span>
               </div>
+              {row.task.externalSource && (
+                <div className="mt-0.5 pl-4">
+                  <ExternalBadge task={row.task} showParent />
+                </div>
+              )}
               <div className="pl-4 text-[11px] text-gray-400">
                 {row.task.estimateDays != null && <span>预估 {row.task.estimateDays} 天</span>}
                 {row.task.estimateDays != null && row.occupiedDays > 0 && <span> / </span>}
@@ -161,7 +167,7 @@ export function WeekGrid({
               return (
                 <div
                   key={cell.date}
-                  className={`relative h-[52px] border-l border-gray-100 transition-colors ${
+                  className={`relative min-h-[52px] border-l border-gray-100 transition-colors ${
                     meta.isWorkday ? "" : "bg-gray-100/60"
                   } ${isToday && meta.isWorkday ? "bg-blue-50/30" : ""} ${
                     hasEntries ? "cursor-pointer" : "cursor-pointer hover:bg-blue-50/60"

@@ -13,12 +13,15 @@ import type {
   FileContent,
   FileKind,
   FileNode,
+  JiraAuthType,
+  JiraConfigInput,
+  JiraConfigView,
   SearchHit,
   SearchResult,
   Snapshot,
   VaultInfo,
 } from "../shared/types";
-import { kindOf } from "../shared/types";
+import { DEFAULT_JIRA_JQL, kindOf } from "../shared/types";
 import {
   IGNORE_DIRS,
   MAX_MATCHES_PER_FILE,
@@ -600,7 +603,165 @@ const routes: Record<string, (payload: Record<string, unknown>) => unknown> = {
       clearTimeout(timer);
     }
   },
+
+  // ---------------- Jira 只读同步（Issue #25）：token 只在宿主侧，前端只见掩码 ----------------
+  wl_jira_config_get: () => jiraConfigView(readJiraConfig()),
+  wl_jira_config_set: (p) => {
+    const existing = readJiraConfig();
+    const input = p as unknown as Partial<JiraConfigInput>;
+    const token =
+      typeof input.token === "string" && input.token.trim() ? input.token.trim() : existing.token;
+    const cfg = normalizeJiraConfig({
+      ...existing,
+      baseUrl: String(input.baseUrl ?? existing.baseUrl),
+      authType: input.authType ?? existing.authType,
+      email: String(input.email ?? existing.email),
+      jql: String(input.jql ?? existing.jql),
+      includeStorySubtasks:
+        typeof input.includeStorySubtasks === "boolean"
+          ? input.includeStorySubtasks
+          : existing.includeStorySubtasks,
+      intervalMinutes:
+        input.intervalMinutes != null ? Number(input.intervalMinutes) : existing.intervalMinutes,
+      enabled: typeof input.enabled === "boolean" ? input.enabled : existing.enabled,
+      token,
+    });
+    writeJiraConfig(cfg);
+    return jiraConfigView(cfg);
+  },
+  wl_jira_config_clear: () => {
+    try {
+      fs.unlinkSync(jiraConfigFile());
+    } catch {
+      /* 文件不存在视为已清除 */
+    }
+    return null;
+  },
+  wl_jira_request: async (p) => {
+    const cfg = readJiraConfig();
+    if (!cfg.baseUrl) throw new Error("尚未配置 Jira 地址");
+    if (!cfg.token) throw new Error("尚未配置 Jira Token");
+    if (cfg.authType === "cloud" && !cfg.email) throw new Error("Cloud 认证需要填写邮箱");
+    const reqPath = String(p.path ?? "");
+    if (!reqPath.startsWith("/rest/api/") || reqPath.includes("..")) {
+      throw new Error("仅允许访问 Jira REST 路径（/rest/api/…）");
+    }
+    const method = String(p.method ?? "GET").toUpperCase();
+    const headers: Record<string, string> = { Accept: "application/json" };
+    headers.Authorization =
+      cfg.authType === "cloud"
+        ? `Basic ${Buffer.from(`${cfg.email}:${cfg.token}`, "utf-8").toString("base64")}`
+        : `Bearer ${cfg.token}`;
+    const body = typeof p.body === "string" ? p.body : undefined;
+    if (body) headers["Content-Type"] = "application/json";
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 30000);
+    try {
+      const res = await fetch(cfg.baseUrl + reqPath, { method, headers, body, signal: ctrl.signal });
+      const text = await res.text();
+      return { status: res.status, body: text.slice(0, 2 * 1024 * 1024) };
+    } catch (e) {
+      throw new Error(`Jira 请求失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      clearTimeout(timer);
+    }
+  },
 };
+
+// ---------------- Jira 配置存储（%APPDATA%/worklog/jira.json；token 不入库、不进导出） ----------------
+interface StoredJiraConfig {
+  version: 1;
+  baseUrl: string;
+  authType: JiraAuthType;
+  email: string;
+  token: string;
+  jql: string;
+  includeStorySubtasks: boolean;
+  intervalMinutes: number;
+  enabled: boolean;
+}
+
+function jiraConfigFile(): string {
+  return path.join(worklogDataDir(), "jira.json");
+}
+
+function defaultJiraConfig(): StoredJiraConfig {
+  return {
+    version: 1,
+    baseUrl: "",
+    authType: "pat",
+    email: "",
+    token: "",
+    jql: DEFAULT_JIRA_JQL,
+    includeStorySubtasks: true,
+    intervalMinutes: 15,
+    enabled: false,
+  };
+}
+
+function normalizeJiraBaseUrl(value: string): string {
+  const raw = value.trim().replace(/\/+$/, "");
+  if (!raw) return "";
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    throw new Error("Jira 地址不是合法 URL");
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error("Jira 地址仅支持 http(s)");
+  if (u.username || u.password) throw new Error("Jira 地址不能包含账号密码");
+  if (u.search || u.hash) throw new Error("Jira 地址不能包含查询参数或锚点");
+  return (u.origin + u.pathname).replace(/\/+$/, "");
+}
+
+function normalizeJiraConfig(input: Partial<StoredJiraConfig>): StoredJiraConfig {
+  const interval = Number(input.intervalMinutes);
+  return {
+    version: 1,
+    baseUrl: normalizeJiraBaseUrl(String(input.baseUrl ?? "")),
+    authType: input.authType === "cloud" ? "cloud" : "pat",
+    email: String(input.email ?? "").trim(),
+    token: String(input.token ?? ""),
+    jql: String(input.jql ?? "").trim() || DEFAULT_JIRA_JQL,
+    includeStorySubtasks: input.includeStorySubtasks !== false,
+    intervalMinutes: Number.isFinite(interval)
+      ? Math.min(240, Math.max(5, Math.round(interval)))
+      : 15,
+    enabled: input.enabled === true,
+  };
+}
+
+function readJiraConfig(): StoredJiraConfig {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(jiraConfigFile(), "utf-8")) as Partial<StoredJiraConfig>;
+    return normalizeJiraConfig(parsed);
+  } catch {
+    return defaultJiraConfig();
+  }
+}
+
+function writeJiraConfig(cfg: StoredJiraConfig): void {
+  const dir = worklogDataDir();
+  fs.mkdirSync(dir, { recursive: true });
+  const file = jiraConfigFile();
+  const tmp = file + ".tmp";
+  fs.writeFileSync(tmp, JSON.stringify(cfg, null, 2), { encoding: "utf-8", mode: 0o600 });
+  fs.renameSync(tmp, file);
+}
+
+function jiraConfigView(cfg: StoredJiraConfig): JiraConfigView {
+  return {
+    baseUrl: cfg.baseUrl,
+    authType: cfg.authType,
+    email: cfg.email,
+    jql: cfg.jql,
+    includeStorySubtasks: cfg.includeStorySubtasks,
+    intervalMinutes: cfg.intervalMinutes,
+    enabled: cfg.enabled,
+    hasToken: cfg.token.length > 0,
+    tokenHint: cfg.token.length > 0 ? cfg.token.slice(-4) : null,
+  };
+}
 
 /** Worklog 数据目录：WORKLOG_DATA_DIR 覆盖，默认 %APPDATA%/worklog（与独立 Worklog 共用） */
 function worklogDataDir(): string {

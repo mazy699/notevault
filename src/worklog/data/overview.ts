@@ -1,7 +1,7 @@
 import { q, type Database } from "./db";
 import { addDaysStr, monthAdd, monthFirst, todayStr, weekMonday } from "./dates";
 import { dayMeta } from "./workday";
-import { getTask, taskStats, taskTypeOrder } from "./models";
+import { getTask, rowToTask, taskStats, taskTypeOrder, type TaskRow as DbTaskRow } from "./models";
 import type { Chip, DayMeta, MonthOverview, TaskRow, WeekMatrix } from "../types";
 
 /**
@@ -64,7 +64,21 @@ export function weekMatrix(db: Database, dateStr: string): WeekMatrix {
       b.task.id - a.task.id
   );
 
-  return { weekStart: monday, days, rows };
+  // 外部来源、尚未排期（无时间窗）的待办：单独成区，不挤进甘特矩阵
+  const rowIds = new Set(ids);
+  const externalUnscheduled = q<DbTaskRow>(
+    db,
+    `SELECT * FROM task
+     WHERE external_source IS NOT NULL
+       AND external_missing = 0
+       AND status IN ('todo','in_progress','on_hold')
+       AND (window_start IS NULL OR window_end IS NULL)
+     ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END, id DESC`
+  )
+    .map(rowToTask)
+    .filter((task) => !rowIds.has(task.id));
+
+  return { weekStart: monday, days, rows, externalUnscheduled };
 }
 
 function entrySummaries(db: Database, taskId: number, date: string) {
@@ -119,9 +133,54 @@ export function monthOverview(db: Database, monthAnyDay: string): MonthOverview 
     chipsByDate.set(r.entry_date, list);
   }
 
+  // 外部来源的计划层：按外部截止日期落在当天；当天已有记录的任务不重复显示
+  const planRows = q<{
+    id: number;
+    title: string;
+    type: string;
+    status: string;
+    external_source: string;
+    external_id: string | null;
+    external_missing: number;
+    window_end: string;
+  }>(
+    db,
+    `SELECT id, title, type, status, external_source, external_id, external_missing, window_end
+     FROM task
+     WHERE external_source IS NOT NULL
+       AND external_missing = 0
+       AND status IN ('todo','in_progress','on_hold')
+       AND window_end IS NOT NULL
+       AND window_end >= ? AND window_end < ?
+     ORDER BY window_end, CASE priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END, id`,
+    [first, nextMonth]
+  );
+  const plansByDate = new Map<string, Chip[]>();
+  for (const r of planRows) {
+    const date = r.window_end;
+    const recorded = chipsByDate.get(date) ?? [];
+    if (recorded.some((c) => c.taskId === Number(r.id))) continue;
+    const list = plansByDate.get(date) ?? [];
+    list.push({
+      taskId: Number(r.id),
+      title: r.title,
+      type: r.type as Chip["type"],
+      status: r.status as Chip["status"],
+      planned: true,
+      externalSource: r.external_source as Chip["externalSource"],
+      externalId: r.external_id,
+      externalMissing: Number(r.external_missing) === 1,
+    });
+    plansByDate.set(date, list);
+  }
+
   const monthDays = days
     .filter((d) => d.date >= first && d.date < nextMonth)
-    .map((d) => ({ date: d.date, chips: chipsByDate.get(d.date) ?? [] }));
+    .map((d) => ({
+      date: d.date,
+      chips: chipsByDate.get(d.date) ?? [],
+      plans: plansByDate.get(d.date) ?? [],
+    }));
 
   return { gridStart, days, monthDays, workdays, workdaysElapsed };
 }

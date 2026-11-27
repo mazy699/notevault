@@ -137,6 +137,10 @@ export const COMMANDS = [
   "wl_backup",
   "wl_data_info",
   "wl_ai_proxy",
+  "wl_jira_config_get",
+  "wl_jira_config_set",
+  "wl_jira_config_clear",
+  "wl_jira_request",
 ] as const;
 
 export type Command = (typeof COMMANDS)[number];
@@ -200,6 +204,53 @@ export interface SnippetDb {
   /** 手动排序（id 从前往后）；缺省按 updatedAt 倒序 */
   order?: string[];
 }
+
+// ---------------- Jira 只读同步（Issue #25） ----------------
+
+/** Cloud：邮箱 + API Token（Basic）；Server/DC：Personal Access Token（Bearer） */
+export type JiraAuthType = "cloud" | "pat";
+
+/** 返回给前端的 Jira 配置视图：token 只以“是否已保存 + 末四位”形式出现 */
+export interface JiraConfigView {
+  baseUrl: string;
+  authType: JiraAuthType;
+  email: string;
+  jql: string;
+  /** 额外同步“我负责的 Story”下的子任务（两段式 JQL） */
+  includeStorySubtasks: boolean;
+  intervalMinutes: number;
+  enabled: boolean;
+  hasToken: boolean;
+  tokenHint: string | null;
+}
+
+export interface JiraConfigInput {
+  baseUrl: string;
+  authType: JiraAuthType;
+  email: string;
+  jql: string;
+  includeStorySubtasks: boolean;
+  intervalMinutes: number;
+  enabled: boolean;
+  /** 空/省略表示保持原 token 不变 */
+  token?: string | null;
+}
+
+export interface JiraHttpRequest {
+  /** 必须以 /rest/api/ 开头（宿主编排只允许 Jira REST 路径） */
+  path: string;
+  method?: string;
+  body?: string;
+}
+
+export interface JiraHttpResponse {
+  status: number;
+  body: string;
+}
+
+/** 默认 JQL：我负责的子任务与 Bug，按更新时间升序增量拉取 */
+export const DEFAULT_JIRA_JQL =
+  "assignee = currentUser() AND issuetype in (Sub-task, Bug) ORDER BY updated ASC";
 
 /** git log 单条提交 */
 export interface GitCommit {

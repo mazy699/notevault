@@ -32,6 +32,8 @@ import type {
 
 import { getWorklogService } from "../session";
 import { saveWorklogFile } from "./host";
+import type { JiraConfigInput, JiraConfigView } from "../../../shared/types";
+import type { JiraSyncResult, JiraSyncStatus, JiraTestResult } from "../data/sync/types";
 
 /** 通道 → 前端 DataService（sql.js 内存库）直连，无需宿主 IPC */
 async function call<T>(channel: string, payload?: unknown): Promise<T> {
@@ -99,6 +101,14 @@ export const api = {
   // 演示数据
   demoSeed: () => call<{ tasks: number }>("demo_seed"),
   demoClear: () => call<number>("demo_clear"),
+
+  // Jira 只读同步（Issue #25）
+  jiraConfigGet: () => call<JiraConfigView>("jira_config_get"),
+  jiraConfigSave: (input: JiraConfigInput) => call<JiraConfigView>("jira_config_save", input),
+  jiraConfigClear: () => call<void>("jira_config_clear"),
+  jiraTest: () => call<JiraTestResult>("jira_test"),
+  jiraSync: (full = false) => call<JiraSyncResult>("jira_sync", { full }),
+  jiraStatus: () => call<JiraSyncStatus>("jira_status"),
 
   // 项目管理
   projectList: () => call<Project[]>("project_list"),

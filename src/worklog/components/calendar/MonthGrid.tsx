@@ -16,6 +16,7 @@ export function MonthGrid({ overview }: { overview: MonthOverview }) {
   const today = todayStr();
 
   const chipsByDate = new Map(overview.monthDays.map((d) => [d.date, d.chips]));
+  const plansByDate = new Map(overview.monthDays.map((d) => [d.date, d.plans]));
   const weekdays = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
 
   return (
@@ -30,10 +31,13 @@ export function MonthGrid({ overview }: { overview: MonthOverview }) {
       <div className="grid grid-cols-7">
         {overview.days.map((meta) => {
           const chips = chipsByDate.get(meta.date) ?? [];
+          const plans = plansByDate.get(meta.date) ?? [];
           const off = !meta.isWorkday;
           const isToday = meta.date === today;
           const shown = chips.slice(0, 3);
-          const rest = chips.length - shown.length;
+          // 已记录优先；剩余槽位展示 Jira / 外部计划（虚线）
+          const shownPlans = plans.slice(0, Math.max(0, 3 - shown.length));
+          const rest = chips.length - shown.length + plans.length - shownPlans.length;
           return (
             <div
               key={meta.date}
@@ -90,6 +94,31 @@ export function MonthGrid({ overview }: { overview: MonthOverview }) {
                         style={{ backgroundColor: done ? STATUS_COLORS.done : color }}
                       />
                       <span className={`truncate text-[11px] text-gray-700 ${done ? "line-through opacity-60" : ""}`}>
+                        {chip.title}
+                      </span>
+                    </div>
+                  );
+                })}
+                {shownPlans.map((chip) => {
+                  const dimmed = hoverTaskId !== null && hoverTaskId !== chip.taskId;
+                  const color = taskTypeColor(taskTypes, chip.type);
+                  return (
+                    <div
+                      key={`plan-${chip.taskId}`}
+                      className={`flex cursor-pointer items-center gap-1 rounded border border-dashed px-1.5 py-1 transition-opacity hover:brightness-95 ${
+                        dimmed ? "opacity-20" : ""
+                      }`}
+                      style={{
+                        borderColor: color,
+                        backgroundColor: rgba(color, theme === "dark" ? 0.12 : 0.04),
+                      }}
+                      title={`计划：${chip.title}${chip.externalId ? `（${chip.externalId}）` : ""}`}
+                      onMouseEnter={() => setHover(chip.taskId)}
+                      onMouseLeave={() => setHover(null)}
+                      onClick={() => openTask(chip.taskId)}
+                    >
+                      <span className="truncate text-[11px] text-gray-500">
+                        {chip.externalId ? `${chip.externalId} · ` : "计划 · "}
                         {chip.title}
                       </span>
                     </div>

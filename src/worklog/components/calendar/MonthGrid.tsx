@@ -70,26 +70,31 @@ export function MonthGrid({ overview }: { overview: MonthOverview }) {
                   const dimmed = hoverTaskId !== null && hoverTaskId !== chip.taskId;
                   const done = chip.status === "done";
                   const color = taskTypeColor(taskTypes, chip.type);
+                  // 计划条：外部任务按 duedate 展示（尚无当天记录），虚线边区分"计划 vs 实际"
+                  const planned = chip.planned === true;
+                  const overdue = planned && chip.overdue === true;
+                  const chipColor = overdue ? "#ef4444" : color;
                   return (
                     <div
-                      key={chip.taskId}
+                      key={`${chip.taskId}-${chip.planned ? "plan" : "entry"}`}
                       className={`flex cursor-pointer items-center gap-1 rounded px-1.5 py-1 transition-opacity hover:brightness-95 ${
                         dimmed ? "opacity-20" : ""
                       }`}
                       style={{
-                        backgroundColor: rgba(color, theme === "dark" ? 0.3 : 0.12),
-                        borderLeft: `3px solid ${color}`,
+                        backgroundColor: rgba(chipColor, theme === "dark" ? 0.3 : 0.12),
+                        borderLeft: planned ? `3px dashed ${chipColor}` : `3px solid ${chipColor}`,
                       }}
-                      title={`${chip.title}${done ? "（已完成）" : ""}`}
+                      title={`${planned ? "[计划] " : ""}${chip.title}${done ? "（已完成）" : ""}${planned ? "（Jira 截止日期，尚无当天记录）" : ""}`}
                       onMouseEnter={() => setHover(chip.taskId)}
                       onMouseLeave={() => setHover(null)}
                       onClick={() => openTask(chip.taskId)}
                     >
                       <span
                         className="inline-block h-2 w-2 shrink-0 rounded-full"
-                        style={{ backgroundColor: done ? STATUS_COLORS.done : color }}
+                        style={{ backgroundColor: done ? STATUS_COLORS.done : chipColor }}
                       />
                       <span className={`truncate text-[11px] text-gray-700 ${done ? "line-through opacity-60" : ""}`}>
+                        {planned ? "计划·" : ""}
                         {chip.title}
                       </span>
                     </div>

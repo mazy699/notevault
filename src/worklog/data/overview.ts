@@ -9,6 +9,8 @@ import type { Chip, DayMeta, MonthOverview, TaskRow, WeekMatrix } from "../types
  * 1. 本周有工作条目的任务（必收）
  * 2. 状态为 待开始/进行中/搁置 且期望时间窗与本周有交集
  * 3. 进行中且最近 21 天内有条目（避免周视图遗漏正在推进、但本周尚未动工的任务）
+ * 4. 进行中且本周内新建、尚无条目
+ * 5. 外部任务（Jira 同步）进行中且时间窗在本周前 14 天内过期（逾期未完，需在周视图继续可见）
  */
 export function weekMatrix(db: Database, dateStr: string): WeekMatrix {
   const monday = weekMonday(dateStr);
@@ -17,7 +19,9 @@ export function weekMatrix(db: Database, dateStr: string): WeekMatrix {
   const dates = days.map((d) => d.date);
   const min = dates[0];
   const max = dates[6];
-  const cutoff = addDaysStr(todayStr(), -21);
+  const today = todayStr();
+  const cutoff = addDaysStr(today, -21);
+  const overdueCutoff = addDaysStr(today, -14);
 
   const placeholders = dates.map(() => "?").join(",");
   const ids = q<{ id: number }>(
@@ -32,8 +36,12 @@ export function weekMatrix(db: Database, dateStr: string): WeekMatrix {
             AND EXISTS (SELECT 1 FROM work_entry w WHERE w.task_id = t.id AND w.entry_date >= ?))
         OR (t.status = 'in_progress' AND t.created_at >= ?
             AND NOT EXISTS (SELECT 1 FROM work_entry w WHERE w.task_id = t.id))
+        OR (t.external_source IS NOT NULL AND t.external_missing = 0
+            AND t.status IN ('todo','in_progress')
+            AND t.window_end IS NOT NULL
+            AND t.window_end < ? AND t.window_end >= ?)
      ORDER BY t.id`,
-    [...dates, max, min, cutoff, `${cutoff} 00:00:00`]
+    [...dates, max, min, cutoff, `${cutoff} 00:00:00`, min, overdueCutoff]
   ).map((r) => Number(r.id));
 
   const rows: TaskRow[] = [];
@@ -117,6 +125,36 @@ export function monthOverview(db: Database, monthAnyDay: string): MonthOverview 
       status: r.status as Chip["status"],
     });
     chipsByDate.set(r.entry_date, list);
+  }
+
+  // 外部任务（Jira 同步）"纯计划"条：按 duedate 落到当天，尚无当天条目也可见（虚线计划样式）
+  const planRows = q<{
+    id: number;
+    title: string;
+    type: string;
+    status: string;
+    window_end: string;
+    external_missing: number | null;
+  }>(
+    db,
+    `SELECT id, title, type, status, window_end, external_missing FROM task
+     WHERE external_source IS NOT NULL AND window_end IS NOT NULL
+       AND window_end >= ? AND window_end < ?
+       AND status IN ('todo','in_progress','on_hold')
+       AND NOT EXISTS (SELECT 1 FROM work_entry w WHERE w.task_id = task.id AND w.entry_date = task.window_end)`,
+    [first, nextMonth]
+  );
+  for (const r of planRows) {
+    const list = chipsByDate.get(r.window_end) ?? [];
+    list.push({
+      taskId: Number(r.id),
+      title: r.title,
+      type: r.type as Chip["type"],
+      status: r.status as Chip["status"],
+      planned: true,
+      overdue: r.window_end < today && Number(r.external_missing ?? 0) === 0,
+    });
+    chipsByDate.set(r.window_end, list);
   }
 
   const monthDays = days

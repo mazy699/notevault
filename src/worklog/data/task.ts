@@ -174,6 +174,12 @@ export function listTasks(db: Database, filter: TaskListFilter = {}): TaskWithSt
     where.push("t.project_id = ?");
     params.push(filter.projectId);
   }
+  if (filter.source === "local") {
+    where.push("t.external_source IS NULL");
+  } else if (filter.source && filter.source !== "all") {
+    where.push("t.external_source = ?");
+    params.push(filter.source);
+  }
   if (filter.search && filter.search.trim()) {
     where.push("(t.title LIKE ? OR t.description LIKE ?)");
     const kw = `%${filter.search.trim()}%`;

@@ -119,6 +119,22 @@ export function WeekGrid({
               <div className="flex items-center gap-1.5">
                 <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
                 <span className="truncate text-[13px] font-medium text-gray-800">{row.task.title}</span>
+                {row.task.externalSource === "jira" && (
+                  <span
+                    className="shrink-0 rounded bg-blue-100 px-1 py-px font-mono text-[10px] font-medium text-blue-700"
+                    title="来自 Jira 同步的任务"
+                  >
+                    {row.task.externalId}
+                  </span>
+                )}
+                {row.task.externalMissing && (
+                  <span
+                    className="shrink-0 rounded bg-amber-100 px-1 py-px text-[10px] font-medium text-amber-700"
+                    title="该任务已从 Jira 同步结果中消失（被转派/关闭/删除），本地记录保留"
+                  >
+                    源缺失
+                  </span>
+                )}
               </div>
               <div className="pl-4 text-[11px] text-gray-400">
                 {row.task.estimateDays != null && <span>预估 {row.task.estimateDays} 天</span>}

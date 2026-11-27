@@ -9,6 +9,7 @@ import {
   MIGRATION_6,
   MIGRATION_7,
   MIGRATION_8,
+  MIGRATION_9,
 } from "./schema";
 
 let sqlPromise: Promise<SqlJsStatic> | null = null;
@@ -45,6 +46,7 @@ export const MIGRATIONS: string[] = [
   MIGRATION_6,
   MIGRATION_7,
   MIGRATION_8,
+  MIGRATION_9,
 ];
 
 export function migrate(db: Database): void {

@@ -4,6 +4,8 @@ import {
   useHolidayImport,
   useHolidayStatus,
   useImportJson,
+  useJiraStatus,
+  useJiraSyncNow,
   useProjects,
   useProjectCreate,
   useProjectRename,
@@ -16,7 +18,7 @@ import {
 import { api } from "../api/client";
 import { DEFAULT_TASK_TYPES, taskTypeOptions } from "../lib/colors";
 import { Select } from "../components/common/Select";
-import { DEFAULT_PROJECT_ID, type TaskTypeDefinition } from "../types";
+import { DEFAULT_JIRA_JQL, DEFAULT_PROJECT_ID, type JiraConfigInput, type JiraSyncStatus, type TaskTypeDefinition } from "../types";
 
 export function SettingsPage() {
   const holidayStatus = useHolidayStatus();
@@ -131,6 +133,16 @@ export function SettingsPage() {
             兼容 OpenAI 协议（DeepSeek / 智谱 GLM / Kimi / OpenAI / 内网 Ollama 等）。数据只在你点击"生成"时发送；敏感环境可将接口地址指向内网模型。
           </p>
           <AiSection />
+        </section>
+
+        {/* Jira 同步 */}
+        <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+          <h2 className="mb-1 text-sm font-semibold text-gray-700">Jira 同步（只读导入）</h2>
+          <p className="mb-3 text-xs leading-5 text-gray-400">
+            把分配给你的 Jira 子任务 / Bug 导入本地任务列表与周月视图（以 (源, issue key) 幂等去重）。只读不回写；
+            Token 仅存本地数据库、请求经宿主代理且仅访问所填 Jira 地址、日志脱敏。Jira 侧已转派/关闭的任务会标记"源缺失"，本地记录不会删除。
+          </p>
+          <JiraSection />
         </section>
 
         {/* 数据与备份 */}
@@ -506,6 +518,192 @@ function AiSection() {
       <p className="text-[11px] leading-5 text-gray-400">
         进阶：在数据目录下放置 ai.json（字段 baseUrl / apiKey / model / promptTemplate），非空字段将覆盖以上 UI
         配置，promptTemplate 可自定义周报格式（需包含 {"{{DATA}}"} 占位符）。
+      </p>
+    </div>
+  );
+}
+
+/** Jira 同步配置：连接/认证/JQL/间隔 + 测试连接 + 立即同步 + 上次同步状态 */
+function JiraSection() {
+  const [cfg, setCfg] = useState<JiraConfigInput>({
+    baseUrl: "",
+    authType: "pat",
+    email: "",
+    token: "",
+    jql: DEFAULT_JIRA_JQL,
+    intervalMinutes: 15,
+    enabled: false,
+  });
+  const [hasToken, setHasToken] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; text: string } | null>(null);
+  const [savedHint, setSavedHint] = useState(false);
+  const status = useJiraStatus();
+  const syncNow = useJiraSyncNow();
+
+  useEffect(() => {
+    if (loaded) return;
+    setLoaded(true);
+    void api
+      .jiraGetConfig()
+      .then((v) => {
+        setCfg((c) => ({ ...c, ...v.config }));
+        setHasToken(v.hasToken);
+      })
+      .catch(() => undefined);
+  }, [loaded]);
+
+  const alertErr = (e: unknown): void => window.alert(e instanceof Error ? e.message : String(e));
+
+  const save = (): void => {
+    void api
+      .jiraSaveConfig(cfg)
+      .then((v) => {
+        setHasToken(v.hasToken);
+        setCfg((c) => ({ ...c, token: "" }));
+        setSavedHint(true);
+        setTimeout(() => setSavedHint(false), 1500);
+      })
+      .catch(alertErr);
+  };
+
+  const test = (): void => {
+    setTesting(true);
+    setTestResult(null);
+    void api
+      .jiraTestConnection(cfg)
+      .then((r) => setTestResult({ ok: r.ok, text: r.message }))
+      .catch(alertErr)
+      .finally(() => setTesting(false));
+  };
+
+  const doSync = (): void => {
+    syncNow.mutate(undefined, {
+      onSuccess: (r) =>
+        window.alert(
+          `同步完成：新建 ${r.created} · 更新 ${r.updated} · 标记源缺失 ${r.markedMissing}（共 ${r.totalIssues} 个 issue）`
+        ),
+      onError: alertErr,
+    });
+  };
+
+  const s: JiraSyncStatus | undefined = status.data;
+  const st = syncNow.isPending;
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-3 gap-3">
+        <label className="col-span-2 text-xs text-gray-500">
+          Jira 地址
+          <input
+            value={cfg.baseUrl}
+            onChange={(e) => setCfg((c) => ({ ...c, baseUrl: e.target.value }))}
+            placeholder="https://jira.example.com 或 https://xxx.atlassian.net"
+            className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 font-mono text-[13px] focus:border-blue-500 focus:outline-none"
+          />
+        </label>
+        <label className="text-xs text-gray-500">
+          认证方式
+          <Select
+            value={cfg.authType}
+            onChange={(v) => setCfg((c) => ({ ...c, authType: v as JiraConfigInput["authType"] }))}
+            options={[
+              { value: "pat", label: "PAT（Bearer）" },
+              { value: "basic", label: "邮箱 + API Token" },
+            ]}
+            className="mt-1 w-full"
+          />
+        </label>
+        {cfg.authType === "basic" && (
+          <label className="col-span-2 text-xs text-gray-500">
+            登录邮箱
+            <input
+              value={cfg.email}
+              onChange={(e) => setCfg((c) => ({ ...c, email: e.target.value }))}
+              placeholder="you@example.com"
+              className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 font-mono text-[13px] focus:border-blue-500 focus:outline-none"
+            />
+          </label>
+        )}
+        <label className="text-xs text-gray-500">
+          Token / API Token（{hasToken ? "已保存，留空保持不变" : "尚未保存"})
+          <input
+            type="password"
+            value={cfg.token}
+            onChange={(e) => setCfg((c) => ({ ...c, token: e.target.value }))}
+            placeholder={hasToken ? "••••••••" : "PAT 或 API Token"}
+            className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 font-mono text-[13px] focus:border-blue-500 focus:outline-none"
+          />
+        </label>
+      </div>
+      <label className="block text-xs text-gray-500">
+        过滤条件（JQL）
+        <textarea
+          value={cfg.jql}
+          onChange={(e) => setCfg((c) => ({ ...c, jql: e.target.value }))}
+          rows={2}
+          className="mt-1 w-full resize-y rounded border border-gray-300 px-2 py-1.5 font-mono text-[12px] focus:border-blue-500 focus:outline-none"
+        />
+      </label>
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="flex items-center gap-1.5 text-xs text-gray-600">
+          <input
+            type="checkbox"
+            checked={cfg.enabled}
+            onChange={(e) => setCfg((c) => ({ ...c, enabled: e.target.checked }))}
+            className="h-3.5 w-3.5"
+          />
+          启用自动同步（应用打开期间）
+        </label>
+        <label className="flex items-center gap-1.5 text-xs text-gray-600">
+          间隔
+          <Select
+            value={String(cfg.intervalMinutes)}
+            onChange={(v) => setCfg((c) => ({ ...c, intervalMinutes: Number(v) }))}
+            options={[5, 10, 15, 30, 60].map((m) => ({ value: String(m), label: `${m} 分钟` }))}
+            className="w-24"
+          />
+        </label>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <button onClick={save} className="rounded bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700">
+          保存配置
+        </button>
+        <button
+          onClick={test}
+          disabled={testing}
+          className="rounded border border-gray-300 px-4 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+        >
+          {testing ? "测试中…" : "测试连接"}
+        </button>
+        <button
+          onClick={doSync}
+          disabled={st || !cfg.baseUrl}
+          className="rounded border border-blue-300 bg-blue-50 px-4 py-1.5 text-sm text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+          title="按当前 JQL 全量拉取并幂等更新本地任务"
+        >
+          {st ? "同步中…" : "立即同步"}
+        </button>
+        {savedHint && <span className="text-xs text-green-600">已保存 ✓</span>}
+        {testResult && (
+          <span className={`text-xs ${testResult.ok ? "text-green-600" : "text-red-500"}`}>{testResult.text}</span>
+        )}
+      </div>
+      {s && (s.lastSyncAt || s.lastError) && (
+        <div
+          className={`rounded px-3 py-2 text-xs ${
+            s.lastResult === "error" ? "bg-red-50 text-red-600" : "bg-gray-50 text-gray-500"
+          }`}
+        >
+          上次同步：{s.lastSyncAt ?? "—"}
+          {s.lastResult === "ok" && s.lastCount != null && ` · 命中 ${s.lastCount} 个 issue`}
+          {s.lastResult === "error" && ` · 失败：${s.lastError ?? "未知错误"}`}
+        </div>
+      )}
+      <p className="text-[11px] leading-5 text-gray-400">
+        自建 Server/DC 填 <code>https://jira.example.com</code> + PAT（Bearer）；Jira Cloud 填 <code>*.atlassian.net</code> 地址 + 邮箱/API
+        Token。同步为全量幂等拉取，重复同步不会产生重复任务；手动编辑的本地字段在 Jira 侧更新后会被覆盖（以源为准）。
       </p>
     </div>
   );

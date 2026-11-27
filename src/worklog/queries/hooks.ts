@@ -25,6 +25,8 @@ export const qk = {
   taskTypes: ["taskTypes"] as const,
   todos: ["todos"] as const,
   onboarding: ["onboarding"] as const,
+  jiraConfig: ["jiraConfig"] as const,
+  jiraStatus: ["jiraStatus"] as const,
 };
 
 /** 本地单机库查询成本低，任何写操作后统一失效全部查询，保证视图一致 */
@@ -214,4 +216,20 @@ export function useTodoConvert() {
 
 export function useTodoAttach() {
   return useWrite((input: TodoAttachInput) => api.todoAttach(input));
+}
+
+// ---------------- Jira 同步 ----------------
+
+export function useJiraConfig() {
+  return useQuery({ queryKey: qk.jiraConfig, queryFn: () => api.jiraGetConfig() });
+}
+
+export function useJiraStatus() {
+  return useQuery({ queryKey: qk.jiraStatus, queryFn: () => api.jiraStatus() });
+}
+
+/** 立即同步成功后统一失效全部查询（任务/周视图/月视图/状态一起刷新） */
+export function useJiraSyncNow() {
+  const invalidate = useInvalidateAll();
+  return useMutation({ mutationFn: () => api.jiraSyncNow(), onSuccess: () => invalidate() });
 }

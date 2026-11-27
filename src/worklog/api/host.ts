@@ -69,6 +69,11 @@ export function makeAiFetch(): typeof fetch {
   return shim as typeof fetch;
 }
 
+/** 系统浏览器/资源管理器打开链接（Jira issue 等外部地址）；失败时调用方回退 window.open */
+export function openExternalUrl(url: string): Promise<void> {
+  return api.openExternal(url).then(() => undefined);
+}
+
 /**
  * 保存导出文本：桌面端走系统"另存为"对话框；Web 端走浏览器下载。
  * 返回给设置页展示的保存位置描述。

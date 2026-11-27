@@ -86,3 +86,51 @@ schema 迁移（0001→0008，向前兼容），与独立 Worklog 打开同一�
 - 分支 A 版本号 0.7.0，产物输出 `release/asis/`（portable/setup/web zip/checksums）
 - 分支 B 同版本号，产物输出 `release/unified/`
 - 两个分支均**不合并 main、不发布 Release**，待人工确认后由用户决定
+
+## 6. Jira 同步扩展（2026-11，feature/jira-sync-phase1）
+
+对应 Issue #25（方案分析见 `docs/10-任务同步与工具定位分析.html`）。Phase 1：Jira → 本地**只读导入**。
+
+### 6.1 数据模型（MIGRATION_9）
+
+`task` 新增：`external_source`（"jira"，枚举预留 linear/github）、`external_id`（issue key）、
+`external_url`、`external_parent_key/summary`、`external_updated`、`external_missing`（源中消失标记）。
+唯一索引 `(external_source, external_id) WHERE external_id IS NOT NULL` 保证同步幂等。
+导出/导入 JSON 保留全部外部字段。
+
+### 6.2 同步引擎（`src/worklog/data/jira.ts`）
+
+- 配置存 `setting` 表：`jira_config`（不含 token）/ `jira_token`（单独键）/ `jira_last_sync`；
+- Cloud（`*.atlassian.net`）走 `/rest/api/3/search/jql`（nextPageToken 翻页），自建 Server/DC 走
+  `/rest/api/2/search`（startAt 翻页）；每页 50 条，上限 40 页；
+- HTTP 经 `wl_ai_proxy` 宿主代理（复用 AI 垫片），无新增宿主命令；
+- 字段映射：summary→title、statusCategory(new/indeterminate/done)→todo/in_progress/done、duedate→时间窗
+  （起=止）、timeoriginalestimate→estimate_days（8h/天）、priority 名称精确匹配（最高/高/中/低/最低与英文）、
+  Bug/缺陷→prod_issue、其余→planned_dev；项目按名自动创建；Cloud ADF 描述抽取纯文本，Server/DC wiki 文本直存；
+- upsert 幂等：`external_updated` 未变化时跳过（保留本地编辑，仅补清 missing 标记）；JQL 结果消失的 issue
+  置 `external_missing=1`，**不删除**任务与工作条目；错误信息经脱敏（不含 token）。
+
+### 6.3 视图与 UI
+
+- 周视图新增收录规则 5：外部任务进行中且时间窗在近 14 天内逾期（今日-14 ≤ window_end < 本周一）；
+- 月视图新增"计划条"：外部任务按 duedate 落 chip（虚线边 + "计划·"前缀，已过期红色），尚无当天条目也可见；
+- 任务列表/详情/周视图行显示 issue key 徽标与"源缺失"标记；详情页显示父任务、源更新时间、"在 Jira 打开"；
+- 任务列表新增"来源"筛选（全部/仅本地/Jira 同步）；
+- 设置页新增"Jira 同步"区块：地址/认证（PAT 或邮箱+API Token）/JQL/间隔/启用 + 测试连接 + 立即同步 + 上次同步状态。
+
+### 6.4 同步触发
+
+进入工作台时一次 + 前端定时器（间隔可配 5~1440 分钟，默认 15，仅应用打开期间）+ 手动"立即同步"。
+失败非阻塞：状态记录于设置页，保留上次数据。
+
+### 6.5 安全
+
+Token 仅存本地 sqlite、UI 打码、日志与错误信息脱敏；请求仅指向配置的 baseUrl（http(s)）；只读不回写 Jira。
+
+### 6.6 验证记录
+
+- 单测 12 项：配置归一化/分离存储、字段映射（Server/Cloud ADF/优先级/类型）、同步幂等、更新、消失标记与恢复、
+  失败状态、错误脱敏、周/月视图收录（日期确定性构造）；全套 193/193、tsc 零错误；
+- Web 端到端（mock Jira，Server/DC API 2 风格）：配置 → 测试连接（显示用户名）→ 同步 3 个 issue（项目/类型/
+  优先级/估时/父任务/描述全部映射正确）→ 二次同步幂等 → 精简模式触发"源缺失"标记 → 恢复；周视图徽标、
+  月视图计划条、来源筛选、详情来源行均实测；深浅主题截图目检；读取/密码/常用语工作台回归正常。

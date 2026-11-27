@@ -36,6 +36,13 @@ export interface TaskRow {
   created_at: string;
   updated_at: string;
   completed_at: string | null;
+  external_source: string | null;
+  external_id: string | null;
+  external_url: string | null;
+  external_parent_key: string | null;
+  external_parent_summary: string | null;
+  external_updated: string | null;
+  external_missing: number | null;
 }
 
 export interface ProjectRow {
@@ -70,6 +77,13 @@ export function rowToTask(r: TaskRow): Task {
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     completedAt: r.completed_at,
+    externalSource: r.external_source,
+    externalId: r.external_id,
+    externalUrl: r.external_url,
+    externalParentKey: r.external_parent_key,
+    externalParentSummary: r.external_parent_summary,
+    externalUpdated: r.external_updated,
+    externalMissing: Number(r.external_missing ?? 0) === 1,
   };
 }
 

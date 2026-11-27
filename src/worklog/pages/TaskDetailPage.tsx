@@ -11,6 +11,7 @@ import {
   taskTypeOptions,
 } from "../lib/colors";
 import { Select } from "../components/common/Select";
+import { openExternalUrl } from "../api/host";
 import { DEFAULT_PROJECT_ID } from "../types";
 import { todayStr, weekdayCN } from "../lib/date";
 import type { TaskPriority, TaskStatus } from "../types";
@@ -137,6 +138,10 @@ export function TaskDetailPage() {
 
   const deviation = task.estimateDays != null && data.stats.occupiedDays > task.estimateDays;
 
+  const openExternalLink = (url: string) => {
+    openExternalUrl(url).catch(() => window.open(url, "_blank"));
+  };
+
   return (
     <div className="h-full overflow-auto px-4 py-4">
       <div className="mx-auto max-w-[860px]">
@@ -154,6 +159,37 @@ export function TaskDetailPage() {
               className="flex-1 rounded border border-transparent px-1 py-1 text-lg font-semibold text-gray-900 hover:border-gray-200 focus:border-blue-500 focus:outline-none"
             />
           </div>
+
+          {/* 外部任务来源信息（Jira 同步） */}
+          {task.externalSource && (
+            <div className="mb-3 flex flex-wrap items-center gap-2 rounded bg-blue-50/60 px-3 py-2 text-xs">
+              <span className="rounded bg-blue-100 px-1.5 py-0.5 font-medium text-blue-700">
+                {task.externalSource === "jira" ? "Jira 同步" : task.externalSource}
+                {task.externalId ? ` · ${task.externalId}` : ""}
+              </span>
+              {task.externalParentKey && (
+                <span className="text-gray-500" title="父任务">
+                  父任务 {task.externalParentKey}
+                  {task.externalParentSummary ? ` · ${task.externalParentSummary}` : ""}
+                </span>
+              )}
+              {task.externalMissing && (
+                <span className="rounded bg-amber-100 px-1.5 py-0.5 text-amber-700" title="该任务已从 Jira 同步结果中消失（被转派/关闭/删除），本地记录保留">
+                  已从源消失
+                </span>
+              )}
+              {task.externalUpdated && <span className="text-gray-400">源更新 {task.externalUpdated.slice(0, 16).replace("T", " ")}</span>}
+              {task.externalUrl && (
+                <button
+                  onClick={() => openExternalLink(task.externalUrl!)}
+                  className="ml-auto text-blue-600 hover:underline"
+                  title="用系统浏览器打开 Jira 页面"
+                >
+                  在 Jira 打开 ↗
+                </button>
+              )}
+            </div>
+          )}
 
           <div className="grid grid-cols-3 gap-3">
             <div className="text-xs text-gray-500">

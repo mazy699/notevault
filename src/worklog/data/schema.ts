@@ -113,3 +113,20 @@ ALTER TABLE todo ADD COLUMN linked_at TEXT;
 export const MIGRATION_8 = `
 ALTER TABLE report ADD COLUMN summary_content TEXT NOT NULL DEFAULT '';
 `;
+
+/**
+ * 0009：外部任务源（Jira 同步，后续可扩展 linear/github）。
+ * - external_source 固定枚举："jira" | "linear" | "github"（本地任务为 NULL）
+ * - (external_source, external_id) 唯一索引保证同步幂等（upsert）
+ * - external_missing：issue 从 JQL 结果消失时置 1，只标记不删除
+ */
+export const MIGRATION_9 = `
+ALTER TABLE task ADD COLUMN external_source TEXT;
+ALTER TABLE task ADD COLUMN external_id TEXT;
+ALTER TABLE task ADD COLUMN external_url TEXT;
+ALTER TABLE task ADD COLUMN external_parent_key TEXT;
+ALTER TABLE task ADD COLUMN external_parent_summary TEXT;
+ALTER TABLE task ADD COLUMN external_updated TEXT;
+ALTER TABLE task ADD COLUMN external_missing INTEGER NOT NULL DEFAULT 0;
+CREATE UNIQUE INDEX idx_task_external ON task(external_source, external_id) WHERE external_id IS NOT NULL;
+`;

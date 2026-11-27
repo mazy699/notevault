@@ -37,6 +37,20 @@ export interface Task {
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
+  /** 外部任务源："jira"（后续可扩展 linear/github），本地任务为 null */
+  externalSource: string | null;
+  /** 外部系统唯一标识（如 Jira issue key：PROJ-123） */
+  externalId: string | null;
+  /** 外部系统详情页链接 */
+  externalUrl: string | null;
+  /** 父任务标识（如 Jira Story key），非子任务为 null */
+  externalParentKey: string | null;
+  /** 父任务标题（父级上下文展示） */
+  externalParentSummary: string | null;
+  /** 外部系统侧最后更新时间 */
+  externalUpdated: string | null;
+  /** 已从源（JQL 结果）消失：仅标记不删除 */
+  externalMissing: boolean;
 }
 
 export interface WorkEntry {
@@ -99,6 +113,10 @@ export interface Chip {
   title: string;
   type: TaskType;
   status: TaskStatus;
+  /** 计划条：来自外部任务的时间窗（尚无工作条目），按 duedate 展示 */
+  planned?: boolean;
+  /** 计划已过期（duedate 早于今天且未完成） */
+  overdue?: boolean;
 }
 
 export interface MonthDay {
@@ -174,6 +192,8 @@ export interface TaskListFilter {
   type?: string | null;
   search?: string | null;
   projectId?: number | null;
+  /** 来源筛选："local"=仅本地任务，"jira"=仅 Jira 同步任务 */
+  source?: string | null;
 }
 
 export interface CreateTaskInput {
@@ -307,4 +327,66 @@ export interface NoteInput {
   title?: string;
   content: string;
   tags?: string[] | string;
+}
+
+// ---------------- Jira 同步（Phase 1：只读导入） ----------------
+
+export type JiraAuthType = "pat" | "basic";
+
+/** Jira 连接配置（不含 token：token 单独存 setting，读取时只返回是否存在） */
+export interface JiraConfig {
+  /** Jira 实例根地址，如 https://jira.example.com（Server/DC）或 https://xxx.atlassian.net（Cloud） */
+  baseUrl: string;
+  /** 认证方式：PAT（Bearer，Server/DC 常用）或 邮箱 + API Token（Cloud） */
+  authType: JiraAuthType;
+  /** basic 认证的登录邮箱 */
+  email: string;
+  /** 过滤条件（JQL）；为空时使用默认口径 */
+  jql: string;
+  /** 定时同步间隔（分钟），应用打开期间生效 */
+  intervalMinutes: number;
+  /** 是否启用自动同步 */
+  enabled: boolean;
+}
+
+/** 保存配置时的输入（token 为空表示保留旧值） */
+export interface JiraConfigInput {
+  baseUrl: string;
+  authType: JiraAuthType;
+  email: string;
+  token: string;
+  jql: string;
+  intervalMinutes: number;
+  enabled: boolean;
+}
+
+export interface JiraConfigView {
+  config: JiraConfig;
+  /** 是否已保存过 token */
+  hasToken: boolean;
+}
+
+/** 默认 JQL：分配给我的子任务 + Bug（Bug 后续可按需删减） */
+export const DEFAULT_JIRA_JQL = "assignee = currentUser() AND issuetype in (Sub-task, Bug) ORDER BY updated ASC";
+
+export interface JiraSyncStatus {
+  lastSyncAt: string | null;
+  lastResult: "ok" | "error" | null;
+  lastError: string | null;
+  /** 上次同步命中的 issue 数 */
+  lastCount: number | null;
+}
+
+export interface JiraSyncResult {
+  created: number;
+  updated: number;
+  /** 本次标记为"已从源消失"的任务数 */
+  markedMissing: number;
+  totalIssues: number;
+}
+
+export interface JiraTestResult {
+  ok: boolean;
+  /** 连接成功时的用户显示名 / 失败原因（已脱敏） */
+  message: string;
 }

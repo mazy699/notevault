@@ -16,6 +16,7 @@ export function TaskListPage() {
   const [status, setStatus] = useState<string>("");
   const [type, setType] = useState<string>("");
   const [project, setProject] = useState<string>("");
+  const [source, setSource] = useState<string>("");
   const [search, setSearch] = useState("");
   const projects = useProjects();
   const taskTypes = useTaskTypes().data ?? DEFAULT_TASK_TYPES;
@@ -25,6 +26,7 @@ export function TaskListPage() {
     type: type || null,
     search: search || null,
     projectId: project ? Number(project) : null,
+    source: source || null,
   });
   const openTask = useUi((s) => s.openTask);
   const projectNameById = new Map((projects.data ?? []).map((p) => [p.id, p.name]));
@@ -56,6 +58,16 @@ export function TaskListPage() {
             options={[{ value: "", label: "全部类型" }, ...typeOptions]}
             className="w-32"
           />
+          <Select
+            value={source}
+            onChange={setSource}
+            options={[
+              { value: "", label: "全部来源" },
+              { value: "local", label: "仅本地" },
+              { value: "jira", label: "Jira 同步" },
+            ]}
+            className="w-32"
+          />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -78,8 +90,26 @@ export function TaskListPage() {
                 <button type="button" onClick={() => openTask(t.id)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
                   <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: taskTypeColor(taskTypes, t.type) }} />
                   <div className="min-w-0 flex-1">
-                    <div className={`truncate text-sm font-medium ${t.status === "cancelled" ? "text-gray-400 line-through" : "text-gray-800"}`}>
-                      {t.title}
+                    <div className="flex items-center gap-1.5">
+                      <span className={`truncate text-sm font-medium ${t.status === "cancelled" ? "text-gray-400 line-through" : "text-gray-800"}`}>
+                        {t.title}
+                      </span>
+                      {t.externalSource === "jira" && (
+                        <span
+                          className="shrink-0 rounded bg-blue-100 px-1 py-px font-mono text-[10px] font-medium text-blue-700"
+                          title="来自 Jira 同步的任务"
+                        >
+                          {t.externalId}
+                        </span>
+                      )}
+                      {t.externalMissing && (
+                        <span
+                          className="shrink-0 rounded bg-amber-100 px-1 py-px text-[10px] font-medium text-amber-700"
+                          title="已从 Jira 同步结果中消失（被转派/关闭/删除），本地记录保留"
+                        >
+                          源缺失
+                        </span>
+                      )}
                     </div>
                     <div className="text-[11px] text-gray-400">
                       {projectNameById.get(t.projectId) ? `${projectNameById.get(t.projectId)} · ` : ""}

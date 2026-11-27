@@ -1,6 +1,8 @@
 import { useEffect } from "react";
 import { Inbox, ListTodo, NotebookPen, Plus, Settings, Sunrise } from "lucide-react";
 import { useUi } from "./stores/ui";
+import { useInvalidateAll } from "./queries/hooks";
+import { api } from "./api/client";
 import { WeekViewPage } from "./pages/WeekViewPage";
 import { MonthViewPage } from "./pages/MonthViewPage";
 import { MorningPage } from "./pages/MorningPage";
@@ -33,6 +35,31 @@ export default function WorklogApp() {
   const page = useUi((s) => s.page);
   const nav = useUi((s) => s.nav);
   const setQuickOpen = useUi((s) => s.setQuickOpen);
+  const invalidate = useInvalidateAll();
+
+  // Jira 自动同步：进入工作台时一次 + 配置间隔定时（仅应用打开期间；失败静默，状态在设置页可见）
+  useEffect(() => {
+    let timer: number | undefined;
+    let alive = true;
+    const run = () => {
+      void api
+        .jiraSyncNow()
+        .then(() => invalidate())
+        .catch(() => undefined);
+    };
+    void api
+      .jiraGetConfig()
+      .then(({ config }) => {
+        if (!alive || !config.enabled || !config.baseUrl) return;
+        run();
+        timer = window.setInterval(run, Math.max(5, config.intervalMinutes || 15) * 60_000);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+      if (timer) window.clearInterval(timer);
+    };
+  }, [invalidate]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

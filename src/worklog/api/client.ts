@@ -7,6 +7,11 @@ import type {
   DayLog,
   HolidayStatusData,
   ImportReport,
+  JiraConfigInput,
+  JiraConfigView,
+  JiraSyncResult,
+  JiraSyncStatus,
+  JiraTestResult,
   MonthOverview,
   MorningData,
   Note,
@@ -120,6 +125,13 @@ export const api = {
   aiSaveConfig: (cfg: { baseUrl: string; apiKey: string; model: string }) => call<void>("ai_save_config", cfg),
   aiTestConnection: (cfg: { baseUrl: string; apiKey: string; model: string }) =>
     call<AiTestResult>("ai_test_connection", cfg),
+
+  // Jira 同步（Phase 1 只读导入）
+  jiraGetConfig: () => call<JiraConfigView>("jira_get_config"),
+  jiraSaveConfig: (input: JiraConfigInput) => call<JiraConfigView>("jira_save_config", input),
+  jiraTestConnection: (input: JiraConfigInput) => call<JiraTestResult>("jira_test_connection", input),
+  jiraSyncNow: () => call<JiraSyncResult>("jira_sync_now"),
+  jiraStatus: () => call<JiraSyncStatus>("jira_status"),
   dayDetail: (date: string) => call<DayDetailData>("day_detail", { date }),
   weeklyReportStats: (date: string) => call<WeeklyReportStats>("weekly_report_stats", { date }),
   aiWeeklyReport: (date: string) => call<WeeklyReportResult>("ai_weekly_report", { date }),

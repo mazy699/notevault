@@ -14,6 +14,7 @@ import * as noteMod from "./note";
 import * as todoMod from "./todo";
 import * as demoMod from "./demo";
 import * as taskTypeMod from "./task-types";
+import * as jiraMod from "./jira";
 import { addDaysStr, nowStr, weekMonday } from "./dates";
 import type {
   AiConfig,
@@ -24,6 +25,11 @@ import type {
   DayLog,
   HolidayStatusData,
   ImportReport,
+  JiraConfigInput,
+  JiraConfigView,
+  JiraSyncResult,
+  JiraSyncStatus,
+  JiraTestResult,
   MonthOverview,
   Note,
   NoteFilter,
@@ -151,6 +157,11 @@ export class DataService {
       todo_delete_many: () => this.todoDeleteMany(Array.isArray(p.ids) ? p.ids.map(Number) : []),
       todo_convert: () => this.todoConvert(p as unknown as TodoConvertInput),
       todo_attach: () => this.todoAttachToTask(p as unknown as TodoAttachInput),
+      jira_get_config: () => this.jiraGetConfig(),
+      jira_save_config: () => this.jiraSaveConfig(p as unknown as JiraConfigInput),
+      jira_test_connection: () => this.jiraTestConnection(p as Partial<JiraConfigInput> | undefined),
+      jira_sync_now: () => this.jiraSyncNow(),
+      jira_status: () => this.jiraStatus(),
     };
     const handler = routes[channel];
     if (!handler) throw new Error(`未知命令: ${channel}`);
@@ -790,6 +801,39 @@ export class DataService {
     return updated;
   }
 
+  // ---------- Jira 同步（Phase 1 只读导入） ----------
+  jiraGetConfig(): JiraConfigView {
+    return jiraMod.getJiraConfigView(this.db);
+  }
+
+  jiraSaveConfig(input: JiraConfigInput): JiraConfigView {
+    jiraMod.saveJiraConfig(this.db, input);
+    this.save();
+    return jiraMod.getJiraConfigView(this.db);
+  }
+
+  async jiraTestConnection(input?: Partial<JiraConfigInput>): Promise<JiraTestResult> {
+    if (!this.fetchImpl) throw new Error("当前环境不支持网络请求");
+    return jiraMod.testJiraConnection(this.db, this.fetchImpl, input ?? null);
+  }
+
+  async jiraSyncNow(): Promise<JiraSyncResult> {
+    if (!this.fetchImpl) throw new Error("当前环境不支持网络请求");
+    try {
+      const r = await jiraMod.syncJiraTasks(this.db, this.fetchImpl);
+      this.save();
+      return r;
+    } catch {
+      // 失败状态已由 syncJiraTasks 记录（脱敏），这里只负责落盘
+      this.save();
+      throw new Error(jiraMod.getJiraSyncStatus(this.db).lastError ?? "同步失败");
+    }
+  }
+
+  jiraStatus(): JiraSyncStatus {
+    return jiraMod.getJiraSyncStatus(this.db);
+  }
+
   // ---------- 导出/导入 ----------
   private exportAll(): unknown {
     return {
@@ -833,9 +877,14 @@ export class DataService {
         const r = t as Record<string, unknown>;
         run(
           this.db,
-          `INSERT INTO task (id, title, description, type, priority, status, estimate_days, window_start, window_end, created_at, updated_at, completed_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-          [r.id, r.title, r.description ?? "", r.type, r.priority, r.status, r.estimate_days ?? null, r.window_start ?? null, r.window_end ?? null, r.created_at, r.updated_at, r.completed_at ?? null]
+          `INSERT INTO task (id, title, description, type, priority, status, estimate_days, window_start, window_end, created_at, updated_at, completed_at,
+            external_source, external_id, external_url, external_parent_key, external_parent_summary, external_updated, external_missing)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          [
+            r.id, r.title, r.description ?? "", r.type, r.priority, r.status, r.estimate_days ?? null, r.window_start ?? null, r.window_end ?? null, r.created_at, r.updated_at, r.completed_at ?? null,
+            r.external_source ?? null, r.external_id ?? null, r.external_url ?? null, r.external_parent_key ?? null, r.external_parent_summary ?? null, r.external_updated ?? null,
+            Number(r.external_missing ?? 0) === 1 ? 1 : 0,
+          ]
         );
       }
       for (const e of entries) {

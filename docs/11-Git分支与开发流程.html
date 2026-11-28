@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Git 分支与开发流程 · 单人 + AI 协作版方案</title>
+<title>个人项目的 Git 流程 · 借鉴公司流程，去掉多人税</title>
 <style>
   :root {
     --bg: #f6f7fb; --card: #ffffff; --line: #e3e6ef; --text: #1f2430; --muted: #6b7280;
@@ -114,9 +114,10 @@
 <body>
 <main>
 
-<h1>Git 分支与开发流程：单人 + AI 协作版</h1>
+<h1>个人项目的 Git 流程：借鉴公司流程，去掉多人税</h1>
 <div class="meta">
-  <b>项目</b>：NoteVault（本地 AI 文档查看器 · Web + 桌面双宿主）&nbsp;·&nbsp;
+  <b>适用</b>：NoteVault 及其他个人项目（单人 + AI 协作）&nbsp;·&nbsp;
+  <b>参照</b>：公司 main / test / release / feature / 周发布 / hotfix 流程&nbsp;·&nbsp;
   <b>日期</b>：2026-11-28&nbsp;·&nbsp;
   <b>性质</b>：流程决策稿，<b>不改代码</b>&nbsp;·&nbsp;
   <b>关联</b>：<code>AGENTS.md</code> §1 开发流程
@@ -125,6 +126,7 @@
 <div class="card tl">
   <h3>一页结论（TL;DR）</h3>
   <ul>
+    <li><b>先分类，再决定抄哪部分</b>：公司流程里 <b>5 样值得借</b>（main 单一事实源、PR 检查点、发布冻结、固定节奏、紧急通道），<b>5 样该整段丢</b>（dev、test 分支、项目级常驻 release、每周 release 分支、回流下发）。<b>借的是纪律，丢的是多人协作成本。</b></li>
     <li><b>不要加常驻 <span class="chip dev">dev</span> 分支。</b>单人项目里它买不到新能力，只会多一次合并、多一条会漂移的线。你缺的不是分支层数，是自动化和清理。</li>
     <li><b>主干模型保持不变</b>：<span class="chip main">main</span> 永远可发布 + 短命 <span class="chip feat">feature/*</span> + PR 合并 + 打 tag 发布。这已经是业界说的 Trunk-based / GitHub Flow。</li>
     <li><b>从公司流程里只借两样</b>：① 固定的<b>发布窗口</b>（周节奏，攒批发布）；② 需要冻结时才切的<b>短命 <span class="chip rel">release/x.y.z</span></b>（桌面打包、杀软误报验证、大版本上线）。</li>
@@ -227,9 +229,9 @@
   <p><b>结论：</b>你现在这套不是“很基础”，而是“骨架对了、肌肉没长”。真正要补的是 <b>CI 自动门禁</b>、<b>main 分支保护</b>、<b>分支清理</b> 和 <b>发布节奏</b>，而不是再加一层 dev。加 dev 反而会把已经理顺的“主干始终可发布”破坏掉。</p>
 </div>
 
-<h2><span class="no">03</span>拆解公司流程：每一环为什么存在，单人是否成立</h2>
+<h2><span class="no">03</span>公司流程：哪些值得借，哪些该整段丢掉</h2>
 
-<p>公司的流程不是“更标准”，而是“为更大的协作规模付的税”。逐环看它解决的是谁的问题：</p>
+<p>公司的流程不是“更标准”，而是“为更大的协作规模付的税”。<b>个人项目要做的不是照搬，也不是简化它的每一步，而是先分清：哪部分是纪律（借），哪部分是人多才需要的协调（丢）。</b>逐环看它解决的是谁的问题：</p>
 
 <svg class="graph" viewBox="0 0 880 340" role="img" aria-label="公司流程分支拓扑示意">
   <!-- 常驻车道：main / test -->
@@ -280,6 +282,33 @@
   <text class="tagtx" x="820" y="37">v2.4.0</text>
 </svg>
 <p class="legend"><span class="k">读法</span>：项目开始时从 main 切一条 release 分支，各任务在 feature 分支上并行，合回 release；release 随时合入 test 供测试；整项目完成后 release 合 main 上线。多条 release 之间还要互相“回流下发”。</p>
+
+<div class="cols">
+  <div class="card ok-box">
+    <h4>值得借的 5 样</h4>
+    <ul>
+      <li><b>main 单一事实源</b> <span class="tag ok">原样</span><br><span class="footnote">所有发布都从 main 出，历史不撒谎。</span></li>
+      <li><b>PR 作为检查点</b> <span class="tag ok">原样</span><br><span class="footnote">自己合并也走 PR；同时挡住 AI 代理直推。</span></li>
+      <li><b>发布前冻结</b> <span class="tag warn">改造</span><br><span class="footnote">只在发布昂贵时切 <code>release/X.Y</code>，≤ 2 周、只收修复。</span></li>
+      <li><b>固定发布节奏</b> <span class="tag warn">改造</span><br><span class="footnote">保留“窗口”，不保留每周分支；main 承载攒批。</span></li>
+      <li><b>紧急通道</b> <span class="tag ok">原样</span><br><span class="footnote">fix 从 main 拉，立刻打 patch tag，不等窗口。</span></li>
+    </ul>
+  </div>
+  <div class="card bad-box">
+    <h4>该整段丢的 5 样</h4>
+    <ul>
+      <li><b>dev 分支</b><br><span class="footnote">没有第二个集成点，也不需要“非生产的共享集成分支”。</span></li>
+      <li><b>test 分支</b><br><span class="footnote">没有共享测试环境和测试同学；测试环境 = 本机门禁 + 打包产物。</span></li>
+      <li><b>项目级常驻 release 分支</b><br><span class="footnote">项目参与者只有你，集成点就是 main；长期冻结只会制造漂移。</span></li>
+      <li><b>每周 release 分支</b><br><span class="footnote">窗口是时间规则，不需要实体化成分支。</span></li>
+      <li><b>回流下发</b><br><span class="footnote">分支短命，没有需要定期回流的线；每日 rebase 就够。</span></li>
+    </ul>
+  </div>
+</div>
+
+<div class="card tl">
+  <p><b>个人项目的流程公式：</b>主干一条 + 分支短命 + 合并过门禁 + 发布只打 tag + 冻结按需。<b>多出来的层，只在“第二个人 / 真环境 / 长冻结”出现时才加。</b></p>
+</div>
 
 <table>
   <tr>
@@ -401,6 +430,8 @@
 
 <h2><span class="no">05</span>方案对比：三种候选，选哪个</h2>
 
+<h3>5.1 三种方案对比</h3>
+
 <table>
   <tr>
     <th style="width:150px">维度</th>
@@ -461,6 +492,58 @@
 <div class="card ok-box">
   <p><b>建议：</b>默认跑方案 A；遇到“需要冻结验证”的版本（尤其是桌面安装包 + 杀软误报验证，见 <code>docs/05-杀毒软件与发布说明.md</code>）临时切到方案 C，冻结结束立刻回到 A。<b>不要采用方案 B</b>——它是给多人团队设计的，单人用只会拿到它的全部成本。</p>
   <p class="footnote">顺带说明：完整的 Git Flow（main / develop / release / hotfix / feature 五类分支）对你更不适用，它诞生于“有版本发布窗口、多人并行、需要长期维护多个已发布版本”的桌面软件时代。你的发布频率和协作规模都撑不起它的仪式感。</p>
+</div>
+
+<h3>5.2 不同个人项目，抄到哪一档</h3>
+
+<p>同一套原则，按项目的三个事实调档：<b>有没有第二个人、有没有真实的多环境、发布是否昂贵</b>。档位由事实决定，不由“想不想更规范”决定。</p>
+
+<table>
+  <tr>
+    <th style="width:110px">档位</th>
+    <th>典型项目</th>
+    <th>分支模型</th>
+    <th>从公司流程抄什么</th>
+    <th>不抄什么</th>
+  </tr>
+  <tr>
+    <td><b>A · 轻量</b></td>
+    <td>脚本、小工具、一次性工具</td>
+    <td>只有 main，或极短分支；发版打 tag</td>
+    <td>tag / 发布记录</td>
+    <td>其余全部；连 PR 都可以省（无 AI 代理参与时）</td>
+  </tr>
+  <tr>
+    <td><b>B · 标准</b><br><span class="footnote">NoteVault 在这档</span></td>
+    <td>单人长期维护的本地应用 / 桌面应用</td>
+    <td><b>main + 短命 feature/fix + PR + 门禁 + tag</b></td>
+    <td>main 单一事实源、PR 检查点、发布窗口、按需冻结、紧急通道</td>
+    <td>dev、test 分支、项目级常驻 release、每周 release 分支、回流下发</td>
+  </tr>
+  <tr>
+    <td><b>C · 有线上环境</b></td>
+    <td>个人 Web 服务 / API / 有公网访问的小产品</td>
+    <td>main + PR + 预览部署 <b>或</b> staging 环境 + tag 上线</td>
+    <td>main、PR、发布冻结（rc tag 或短命 release）、紧急通道</td>
+    <td>test 分支（用预览环境替代）、dev、回流</td>
+  </tr>
+  <tr>
+    <td><b>D · 可能多人 / 开源</b></td>
+    <td>准备协作、已开源、或有外部贡献者</td>
+    <td>main + PR + 短命分支 + 按需 release/X</td>
+    <td>公司流程的精简版：main、PR、冻结、节奏、hotfix</td>
+    <td>仍不需要 dev；除非 main 自动上生产且存在真实 staging</td>
+  </tr>
+</table>
+
+<div class="card">
+  <h4>怎么判断“发布昂贵”（决定要不要冻结）</h4>
+  <p>满足任意一条，就值得保留短期 <code>release/X.Y</code>：<b>安装包需要人工验证</b>（NoteVault 的桌面版属于这类）、<b>要过杀软或应用商店审核</b>、<b>需要停机或数据迁移</b>、<b>有外部验收人</b>。一条都不满足，就直接在 main 打 tag 发布，别切分支。</p>
+  <p class="footnote">档位可以随项目升级，但升级理由只能是事实变化（多了一个人 / 多了一个真实环境 / 发布变贵），不能是“感觉更规范”。</p>
+</div>
+
+<div class="card ok-box">
+  <p><b>跨项目通用的一条：</b>分支数量不体现专业度。<b>能用一条主线说清楚的项目，就是好流程。</b>小工具硬套 release/test/dev，和单人项目硬套 Scrum 一样，只会把时间花在维护流程上。</p>
 </div>
 
 <h2><span class="no">06</span>NoteVault 的落地方案</h2>
@@ -817,6 +900,7 @@ jobs:
     <h4>今天就能做（10 分钟）</h4>
     <ul class="check">
       <li>确认不引入 dev 分支（本文结论）</li>
+      <li>给其他个人项目按 5.2 选档，小工具直接砍到 main + tag</li>
       <li>删除已合并的本地 / 远端分支</li>
       <li>给 main 加分支保护（禁强推、要求 PR）</li>
       <li>把第 06 节的分支寿命表补进 AGENTS.md</li>
@@ -860,6 +944,11 @@ jobs:
     <td>release 分支何时启用</td>
     <td>仅两种情况：桌面安装包需冻结验证、大版本上线；<b>硬上限 2 周</b></td>
     <td>发布流程</td>
+  </tr>
+  <tr>
+    <td>其他个人项目怎么套</td>
+    <td>按 5.2 选档；只有事实变化（多人 / 真环境 / 发布变贵）才升级</td>
+    <td>各项目仓库</td>
   </tr>
 </table>
 

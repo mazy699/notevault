@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Git 分支与开发流程 · 单人 + AI 协作版方案</title>
+<style>
+  :root {
+    --bg: #f6f7fb; --card: #ffffff; --line: #e3e6ef; --text: #1f2430; --muted: #6b7280;
+    --accent: #4f6ef7; --accent-soft: #eef1ff; --ok: #12855f; --ok-soft: #e6f6ef;
+    --warn: #b45309; --warn-soft: #fdf3e3; --bad: #b42318; --bad-soft: #fdecea;
+    --mono: Consolas, "Cascadia Mono", "SFMono-Regular", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #10131a; --card: #171c26; --line: #2a3140; --text: #e6e9f2; --muted: #98a1b3;
+      --accent: #7b93ff; --accent-soft: #1c2440; --ok: #3ecf8e; --ok-soft: #132a20;
+      --warn: #f0a44b; --warn-soft: #2c2213; --bad: #f4736a; --bad-soft: #2e1614;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.78 -apple-system, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+  }
+  main { max-width: 1000px; margin: 0 auto; padding: 32px 24px 72px; }
+  h1 { font-size: 27px; margin: 0 0 6px; letter-spacing: .3px; }
+  h2 { font-size: 20px; margin: 46px 0 14px; padding-bottom: 8px; border-bottom: 2px solid var(--line); }
+  h2 .no { color: var(--accent); margin-right: 8px; font-family: var(--mono); }
+  h3 { font-size: 16.5px; margin: 28px 0 10px; }
+  h4 { font-size: 14.5px; margin: 18px 0 8px; }
+  p { margin: 8px 0; }
+  ul, ol { margin: 8px 0; padding-left: 24px; }
+  li { margin: 5px 0; }
+  code {
+    font-family: var(--mono); font-size: 13px;
+    background: var(--accent-soft); color: var(--accent);
+    padding: 1px 6px; border-radius: 5px; word-break: break-all;
+  }
+  a { color: var(--accent); text-decoration: none; border-bottom: 1px dashed var(--line); }
+  .meta { color: var(--muted); font-size: 13px; margin-bottom: 20px; line-height: 1.9; }
+  .meta b { color: var(--text); font-weight: 600; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px 20px; margin: 14px 0;
+  }
+  .card h3:first-child, .card h4:first-child { margin-top: 0; }
+  .tl { border-left: 4px solid var(--accent); }
+  .ok-box { border-left: 4px solid var(--ok); }
+  .warn-box { border-left: 4px solid var(--warn); }
+  .bad-box { border-left: 4px solid var(--bad); }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13.5px; background: var(--card); }
+  th, td { border: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { background: var(--accent-soft); font-weight: 600; }
+  th.nowrap { white-space: nowrap; }
+  td ul { margin: 0; padding-left: 18px; }
+  td code { white-space: nowrap; }
+  .chip {
+    display: inline-block; padding: 1px 10px; border-radius: 999px;
+    color: #fff; font-size: 12px; font-weight: 600; letter-spacing: .3px; white-space: nowrap;
+  }
+  .chip.main { background: #4f6ef7; } .chip.dev { background: #8a5cf6; }
+  .chip.rel { background: #b45309; } .chip.feat { background: #0f9d8f; }
+  .chip.tag { background: #12855f; } .chip.test { background: #6b7280; }
+  .tag { display: inline-block; padding: 0 8px; border-radius: 5px; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+  .tag.ok { background: var(--ok-soft); color: var(--ok); }
+  .tag.warn { background: var(--warn-soft); color: var(--warn); }
+  .tag.bad { background: var(--bad-soft); color: var(--bad); }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .cols-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  @media (max-width: 800px) { .cols, .cols-3 { grid-template-columns: 1fr; } }
+  .rule { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-bottom: 1px dashed var(--line); }
+  .rule:last-child { border-bottom: none; }
+  .rule .id {
+    flex: 0 0 38px; height: 26px; border-radius: 7px; background: var(--accent);
+    color: #fff; font: 700 12.5px/26px var(--mono); text-align: center;
+  }
+  .rule .body b { display: block; margin-bottom: 2px; }
+  .rule .body span { color: var(--muted); font-size: 13.5px; }
+  pre {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px 16px; overflow-x: auto; font-family: var(--mono);
+    font-size: 12.5px; line-height: 1.65; margin: 10px 0;
+  }
+  pre code { background: none; color: var(--text); padding: 0; font-size: inherit; }
+  pre .c { color: var(--muted); }
+  .graph { width: 100%; height: auto; background: var(--card); border: 1px solid var(--line); border-radius: 12px; margin: 14px 0 6px; }
+  .graph .axis { stroke: var(--line); stroke-width: 2; fill: none; }
+  .graph .fg { stroke: var(--accent); stroke-width: 2; fill: none; }
+  .graph .fr { stroke: var(--warn); stroke-width: 2; fill: none; }
+  .graph .dot { fill: var(--card); stroke: var(--accent); stroke-width: 2; }
+  .graph .dot.fill { fill: var(--accent); }
+  .graph .dot.warn { stroke: var(--warn); }
+  .graph .dot.warnfill { fill: var(--warn); stroke: var(--warn); }
+  .graph .lbl { fill: var(--text); font: 600 12.5px var(--mono); }
+  .graph .note { fill: var(--muted); font: 11.5px var(--mono); }
+  .graph .tagbg { fill: var(--ok-soft); stroke: var(--ok); stroke-width: 1; }
+  .graph .tagtx { fill: var(--ok); font: 700 11px var(--mono); }
+  .legend { color: var(--muted); font-size: 12.5px; margin: 0 0 18px; }
+  .legend .k { color: var(--text); font-weight: 600; }
+  .qa { background: var(--card); border: 1px solid var(--line); border-radius: 12px; margin: 14px 0; overflow: hidden; }
+  .qa .q { padding: 12px 18px; background: var(--accent-soft); font-weight: 700; font-size: 15px; }
+  .qa .a { padding: 12px 18px; }
+  .qa .a > :first-child { margin-top: 0; }
+  .qa .a > :last-child { margin-bottom: 0; }
+  .check { list-style: none; padding-left: 4px; }
+  .check li { margin: 7px 0; }
+  .check li::before { content: "☐ "; color: var(--accent); font-weight: 700; }
+  .footnote { color: var(--muted); font-size: 12.5px; }
+  hr { border: none; border-top: 1px solid var(--line); margin: 30px 0; }
+  .kbd { font-family: var(--mono); font-size: 12px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: 0 5px; background: var(--card); }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Git 分支与开发流程：单人 + AI 协作版</h1>
+<div class="meta">
+  <b>项目</b>：NoteVault（本地 AI 文档查看器 · Web + 桌面双宿主）&nbsp;·&nbsp;
+  <b>日期</b>：2026-11-28&nbsp;·&nbsp;
+  <b>性质</b>：流程决策稿，<b>不改代码</b>&nbsp;·&nbsp;
+  <b>关联</b>：<code>AGENTS.md</code> §1 开发流程
+</div>
+
+<div class="card tl">
+  <h3>一页结论（TL;DR）</h3>
+  <ul>
+    <li><b>不要加常驻 <span class="chip dev">dev</span> 分支。</b>单人项目里它买不到新能力，只会多一次合并、多一条会漂移的线。你缺的不是分支层数，是自动化和清理。</li>
+    <li><b>主干模型保持不变</b>：<span class="chip main">main</span> 永远可发布 + 短命 <span class="chip feat">feature/*</span> + PR 合并 + 打 tag 发布。这已经是业界说的 Trunk-based / GitHub Flow。</li>
+    <li><b>从公司流程里只借两样</b>：① 固定的<b>发布窗口</b>（周节奏，攒批发布）；② 需要冻结时才切的<b>短命 <span class="chip rel">release/x.y.z</span></b>（桌面打包、杀软误报验证、大版本上线）。</li>
+    <li><b>用 tag 代替 dev</b> 表达“已集成但没发布”的状态：tag 是不可变快照，零合并成本；dev 是可变的线，要一直养着。<b>用门禁 + CI 代替 test 分支</b>：你的测试环境就是本机。</li>
+    <li><b>核心差别不在分支数量，而在分支寿命</b>：公司的分支以“项目 / 周”为单位，所以要靠“回流下发”续命；你的分支以“小时 / 天”为单位，合并即删，回流成本自然趋近于零。</li>
+  </ul>
+</div>
+
+<h2><span class="no">01</span>先想清楚：分支到底在解决什么问题</h2>
+
+<p>分支不是“规范”，它是一种<b>隔离手段</b>。每开一条<b>长命</b>分支，你就欠下一条“同步边”：这条线越久不合，合并冲突越多，越需要人工“回流”。所以判断标准很简单——<b>这条隔离边界，你是否真的需要？</b></p>
+
+<table>
+  <tr>
+    <th style="width:150px">要隔离的东西</th>
+    <th>公司靠什么解决</th>
+    <th>你靠什么解决</th>
+  </tr>
+  <tr>
+    <td><b>半成品代码</b><br><span class="footnote">不能进主干</span></td>
+    <td>feature 分支（多人各占一条）</td>
+    <td><span class="tag ok">一样</span> feature 分支，但只活 1~3 天</td>
+  </tr>
+  <tr>
+    <td><b>集成缓冲</b><br><span class="footnote">合了但还不能发</span></td>
+    <td>dev 分支 / 项目 release 分支</td>
+    <td><span class="tag ok">tag + main</span> 合并进 main 即“已集成”，tag 标记“已发布”，中间态不需要分支</td>
+  </tr>
+  <tr>
+    <td><b>发布冻结</b><br><span class="footnote">只修 bug，不进新功能</span></td>
+    <td>release 分支 + 测试分支</td>
+    <td><span class="tag warn">按需</span> 切 <code>release/x.y.z</code>，2 周内必须收口</td>
+  </tr>
+  <tr>
+    <td><b>环境对应</b><br><span class="footnote">测试环境 / 生产环境</span></td>
+    <td>test 分支部署测试环境，main 部署生产</td>
+    <td><span class="tag ok">门禁 + 预览构建</span> 本机跑测试环境，打包产物即验收对象</td>
+  </tr>
+  <tr>
+    <td><b>多人并行</b><br><span class="footnote">各写各的不打架</span></td>
+    <td>feature + release + dev 多层</td>
+    <td><span class="tag bad">不存在</span> 只有你一个（外加 AI 代理，但代理也用短命分支）</td>
+  </tr>
+</table>
+
+<div class="card">
+  <h4>两个关键认知</h4>
+  <p><b>① 分支是可变指针，tag 是不可变快照。</b>想表达“这一版就是当时那样”，用 tag；想继续在上面改，才用分支。很多团队用 dev 分支做的事（标记一个可测试的版本），一个 tag 就能做，而且不用合并、不会漂移。</p>
+  <p><b>② 分支拓扑不产生质量。</b>质量来自合并前的门禁（<code>tsc --noEmit</code>、<code>vitest</code>、34 项桌面冒烟、打包安装验证）。多加一层 dev，门禁该漏还是漏，只是漏得更晚、更难定位。</p>
+</div>
+
+<h2><span class="no">02</span>现状盘点：你其实已经比“加 dev”更接近正确形态</h2>
+
+<p>先按仓库事实说话（2026-11-28 检查）：</p>
+
+<table>
+  <tr>
+    <th style="width:160px">项目</th>
+    <th>现状</th>
+    <th style="width:180px">评价</th>
+  </tr>
+  <tr>
+    <td><b>分支模型</b></td>
+    <td><code>main</code> + <code>feature/*</code>、<code>fix/*</code>、<code>docs/*</code>，PR 合并进 main</td>
+    <td><span class="tag ok">已是 Trunk-based / GitHub Flow</span></td>
+  </tr>
+  <tr>
+    <td><b>发布方式</b></td>
+    <td><code>chore/release-vX.Y.Z</code> 分支改版本号与发布说明 → 合 main → 打 tag → <code>gh release</code></td>
+    <td><span class="tag ok">事实上就是“短命发布分支”</span></td>
+  </tr>
+  <tr>
+    <td><b>门禁</b></td>
+    <td><code>npx tsc --noEmit</code>、<code>npx vitest run</code>、<code>cargo run -- --smoke</code>（34 项）、双主题截图、安装包冒烟</td>
+    <td><span class="tag ok">门禁成色很足</span></td>
+  </tr>
+  <tr>
+    <td><b>main 保护</b></td>
+    <td>未开启（GitHub 返回 Branch not protected）</td>
+    <td><span class="tag warn">建议开启</span></td>
+  </tr>
+  <tr>
+    <td><b>CI</b></td>
+    <td>仓库无 <code>.github/workflows</code>，门禁全靠本地手动跑</td>
+    <td><span class="tag warn">最大风险点</span></td>
+  </tr>
+  <tr>
+    <td><b>分支清理</b></td>
+    <td>本地 19 条分支，多数已合并但仍保留</td>
+    <td><span class="tag warn">该删了</span></td>
+  </tr>
+  <tr>
+    <td><b>AGENTS.md</b></td>
+    <td>强制“特性分支 → PR → 合并 main → 才能打包发布”</td>
+    <td><span class="tag ok">这是给 AI 代理的护栏，值钱</span></td>
+  </tr>
+</table>
+
+<div class="card ok-box">
+  <p><b>结论：</b>你现在这套不是“很基础”，而是“骨架对了、肌肉没长”。真正要补的是 <b>CI 自动门禁</b>、<b>main 分支保护</b>、<b>分支清理</b> 和 <b>发布节奏</b>，而不是再加一层 dev。加 dev 反而会把已经理顺的“主干始终可发布”破坏掉。</p>
+</div>
+
+<h2><span class="no">03</span>拆解公司流程：每一环为什么存在，单人是否成立</h2>
+
+<p>公司的流程不是“更标准”，而是“为更大的协作规模付的税”。逐环看它解决的是谁的问题：</p>
+
+<svg class="graph" viewBox="0 0 880 340" role="img" aria-label="公司流程分支拓扑示意">
+  <!-- 常驻车道：main / test -->
+  <line class="axis" x1="105" y1="50" x2="860" y2="50"/>
+  <line class="axis" x1="105" y1="290" x2="855" y2="290"/>
+  <!-- release：从 main 拉出，合回 main -->
+  <path class="fr" d="M240 50 C240 85 240 95 240 125 L780 125 C780 95 780 85 780 50"/>
+  <!-- feature：从 release 拉出，合回 release -->
+  <path class="fg" d="M340 125 C340 160 340 175 340 205 L470 205 C470 175 470 160 470 125"/>
+  <!-- release → test -->
+  <path class="fr" d="M540 125 C540 180 540 230 540 290"/>
+  <path class="fr" d="M690 125 C690 180 690 230 690 290"/>
+  <!-- main 提交 -->
+  <circle class="dot fill" cx="105" cy="50" r="4.5"/>
+  <circle class="dot" cx="240" cy="50" r="4.5"/>
+  <circle class="dot" cx="780" cy="50" r="4.5"/>
+  <circle class="dot fill" cx="850" cy="50" r="4.5"/>
+  <!-- release 提交 -->
+  <circle class="dot warn" cx="240" cy="125" r="4.5"/>
+  <circle class="dot warn" cx="340" cy="125" r="4.5"/>
+  <circle class="dot warn" cx="400" cy="125" r="4.5"/>
+  <circle class="dot warn" cx="470" cy="125" r="4.5"/>
+  <circle class="dot warn" cx="540" cy="125" r="4.5"/>
+  <circle class="dot warn" cx="620" cy="125" r="4.5"/>
+  <circle class="dot warn" cx="690" cy="125" r="4.5"/>
+  <circle class="dot warnfill" cx="780" cy="125" r="4.5"/>
+  <!-- feature 提交 -->
+  <circle class="dot" cx="340" cy="205" r="4.5"/>
+  <circle class="dot fill" cx="400" cy="205" r="4.5"/>
+  <circle class="dot" cx="470" cy="205" r="4.5"/>
+  <!-- test 提交 -->
+  <circle class="dot" cx="105" cy="290" r="4.5"/>
+  <circle class="dot" cx="540" cy="290" r="4.5"/>
+  <circle class="dot" cx="690" cy="290" r="4.5"/>
+  <!-- 车道名 -->
+  <text class="lbl" x="10" y="54">main</text>
+  <text class="lbl" x="10" y="129">release</text>
+  <text class="lbl" x="10" y="209">feature</text>
+  <text class="lbl" x="10" y="294">test</text>
+  <!-- 注释 -->
+  <text class="note" x="600" y="112">项目 release 分支</text>
+  <text class="note" x="350" y="230">feature 分支（多任务）</text>
+  <text class="note" x="300" y="278">release → test 触发测试环境</text>
+  <text class="note" x="430" y="32">hotfix 可直接从 main 拉出并回 main</text>
+  <!-- tag 标注（用引线指到 main 上的发布提交） -->
+  <line class="axis" x1="850" y1="42" x2="850" y2="50"/>
+  <rect class="tagbg" x="812" y="24" width="62" height="18" rx="5"/>
+  <text class="tagtx" x="820" y="37">v2.4.0</text>
+</svg>
+<p class="legend"><span class="k">读法</span>：项目开始时从 main 切一条 release 分支，各任务在 feature 分支上并行，合回 release；release 随时合入 test 供测试；整项目完成后 release 合 main 上线。多条 release 之间还要互相“回流下发”。</p>
+
+<table>
+  <tr>
+    <th style="width:130px">环节</th>
+    <th>在公司里解决什么</th>
+    <th style="width:120px">单人是否成立</th>
+    <th>你的替代方案</th>
+  </tr>
+  <tr>
+    <td><span class="chip main">main</span></td>
+    <td>生产环境唯一事实源，任何 tag / 发布都从它出</td>
+    <td><span class="tag ok">完全成立</span></td>
+    <td>保留。<b>并强化“随时可发布”</b>这条性质</td>
+  </tr>
+  <tr>
+    <td><span class="chip test">test</span></td>
+    <td>共享测试环境：测试同学 + 产品在固定地址验收，开发不占环境</td>
+    <td><span class="tag bad">不成立</span></td>
+    <td>没有第二个人验收，也没有共享环境。<b>用本地门禁 + 打包产物验收</b>替代；Web 版本机启动即可</td>
+  </tr>
+  <tr>
+    <td><span class="chip rel">release</span></td>
+    <td>项目级冻结：多个任务先攒在一条线上，整体测完再上线；多人共享同一集成点</td>
+    <td><span class="tag warn">仅冻结期成立</span></td>
+    <td>平时不需要；<b>需要冻结时切短命 <code>release/x.y.z</code></b>（见第 06 节）</td>
+  </tr>
+  <tr>
+    <td><span class="chip feat">feature</span></td>
+    <td>隔离半成品，互不阻塞</td>
+    <td><span class="tag ok">完全成立</span></td>
+    <td>保留，但寿命压到 1~3 天</td>
+  </tr>
+  <tr>
+    <td><b>周发布窗口</b></td>
+    <td>批量上线：把非紧急的修复攒一周，降低发布次数和风险</td>
+    <td><span class="tag ok">可选成立</span></td>
+    <td>保留“窗口”这个概念，<b>去掉每周一条分支</b>：合进 main 攒着，到窗口日打 tag</td>
+  </tr>
+  <tr>
+    <td><b>hotfix</b></td>
+    <td>绕过测试队列，直接从 main 修复并上线</td>
+    <td><span class="tag ok">成立</span></td>
+    <td>保留，但路径与普通修复相同：<code>fix/*</code> → PR → main → patch tag；只是<b>不等窗口</b></td>
+  </tr>
+  <tr>
+    <td><b>回流下发</b></td>
+    <td>多条长命 release 分支并行，必须定期互相同步，否则合并冲突爆炸</td>
+    <td><span class="tag bad">不成立</span></td>
+    <td>分支短命 + 每日 <code>rebase origin/main</code>，<b>没有需要回流的线</b></td>
+  </tr>
+</table>
+
+<div class="card warn-box">
+  <p><b>一句话：</b>公司流程的复杂度来自 <b>多人 + 多环境 + 多项目并行</b>。这三样你都没有，照搬只会得到它们的成本（双重合并、双线漂移、版本号打架），得不到它们的收益（并行、验收分工、发布统筹）。</p>
+</div>
+
+<h2><span class="no">04</span>核心问题：到底要不要加 dev 分支？</h2>
+
+<h3>4.1 结论</h3>
+<div class="card bad-box">
+  <p><b>不加。</b>除非满足 4.4 的触发条件（满足两条以上再重新评估）。单人 + AI 代理的仓库，<span class="chip dev">dev</span> 是一个“看起来更安全、实际只增加延迟和漂移”的中间层。</p>
+</div>
+
+<h3>4.2 dev 想解决的问题，你已经有更便宜的答案</h3>
+<table>
+  <tr><th style="width:220px">dev 分支常被赋予的职责</th><th>你现有的替代</th><th style="width:100px">成本对比</th></tr>
+  <tr>
+    <td>隔离“还没做完的活”</td>
+    <td>feature 分支（本来就是干这个的）</td>
+    <td>相同</td>
+  </tr>
+  <tr>
+    <td>标记“已集成、待发布”的版本</td>
+    <td>main 上的一个 commit + tag；要构建就从 tag / commit 构建</td>
+    <td><span class="tag ok">更便宜</span></td>
+  </tr>
+  <tr>
+    <td>提供一个可测试的快照</td>
+    <td>tag 构建、或 PR 预览构建</td>
+    <td><span class="tag ok">更便宜</span></td>
+  </tr>
+  <tr>
+    <td>让“稳定版”和“开发版”并存</td>
+    <td>tag + 版本号（v1.4.0 / v1.5.0-beta.1）</td>
+    <td><span class="tag ok">更便宜</span></td>
+  </tr>
+</table>
+
+<h3>4.3 加 dev 的五笔真实成本</h3>
+<div class="card">
+  <div class="rule"><div class="id">1</div><div class="body"><b>双重合并</b><span>feature → dev 一次，dev → main 再一次。冲突要么解两遍，要么在第二次合并时集中爆发，而且爆发时你已经在“要发布”的节点上了。</span></div></div>
+  <div class="rule"><div class="id">2</div><div class="body"><b>双线漂移</b><span>main 停在旧版本等发布，dev 一路向前。此时线上出 bug，修复要进 main、进 dev、还可能进 release——一份修改三个落点，这正是公司流程需要“回流下发”的原因。</span></div></div>
+  <div class="rule"><div class="id">3</div><div class="body"><b>发布基准含糊</b><span>tag 打在 dev 还是 main？打在 dev 上，main 的历史就不代表“线上是什么”；打完再把 dev 合回 main，tag 指向的可能是 dev 的合并提交而不是 main 上的提交。查问题时永远要多问一句“这版到底从哪出的”。</span></div></div>
+  <div class="rule"><div class="id">4</div><div class="body"><b>门禁翻倍</b><span>tsc、vitest、34 项桌面冒烟、打包安装验证都不便宜。合并点从 1 个变 2 个，每个都要跑一遍全量门禁；漏跑一次，问题就会晚一个环节才暴露。</span></div></div>
+  <div class="rule"><div class="id">5</div><div class="body"><b>main 失去“永远可发布”</b><span>这是主干开发最值钱的性质：想发就发、随时能发、发了不用等。一旦 dev 成为默认落点，main 就变成“上次发布时的样子”，紧急修复立刻变复杂。省下来的时间，远大于多一层分支带来的心理安全感。</span></div></div>
+</div>
+
+<h3>4.4 什么情况下才该加（触发条件）</h3>
+<p>不要凭感觉，用可观察的条件判断。满足<b>两条以上</b>，再考虑引入第二条长命线：</p>
+<ul>
+  <li><b>第二个人加入</b>，且需要共享一个“非生产”的集成点；</li>
+  <li><b>main 开始自动部署生产</b>（这时才需要一条 staging 线挡在前面）；</li>
+  <li><b>需要长期并行维护两个版本</b>（如 v1 只修 bug、v2 大改，且 v1 还要持续发版）；</li>
+  <li><b>外部冻结期</b>：应用商店审核、客户验收窗口，期间主干不能动；</li>
+  <li><b>有非开发者参与验收</b>，且必须给对方一个稳定可访问的版本。</li>
+</ul>
+<div class="card">
+  <p>即使满足了，也优先用<b>有明确退出条件</b>的分支，而不是常驻 dev：<code>release/1.5</code>（上线后删除）、<code>next</code>（v2 合并后删除）、<code>staging</code>（仅当存在真实 staging 环境）。<b>能删的分支才是好分支。</b></p>
+</div>
+
+<h3>4.5 “中间加一层 dev 会更安全吧？”</h3>
+<div class="qa">
+  <div class="q">直觉：多一层缓冲，出错概率更低？</div>
+  <div class="a">
+    <p>恰恰相反。缓冲层不会拦截错误，只会<b>推迟发现</b>。错误从“合并进 main 时 5 分钟发现”变成“发布前一天发现”，修复成本更高，且那时你面对的是积压了一周的 diff。</p>
+    <p>真正降低出错概率的是三件事：<b>合并前必须过门禁</b>（CI）、<b>main 不许强推/直推</b>（分支保护）、<b>每次合并的 diff 足够小</b>（短命分支）。这三件都与 dev 无关。</p>
+  </div>
+</div>
+
+<h2><span class="no">05</span>方案对比：三种候选，选哪个</h2>
+
+<table>
+  <tr>
+    <th style="width:150px">维度</th>
+    <th>方案 A · 主干 + 短命特性分支<br><span class="footnote">（现状）</span></th>
+    <th>方案 B · main + dev + feature<br><span class="footnote">（你想问的）</span></th>
+    <th>方案 C · 主干 + 按需 release/x<br><span class="footnote">（推荐升级）</span></th>
+  </tr>
+  <tr>
+    <td><b>长命分支数</b></td>
+    <td>1（main）</td>
+    <td>2（main、dev）</td>
+    <td>1~2（main，冻结期多一条 2 周的分支）</td>
+  </tr>
+  <tr>
+    <td><b>每个功能的合并次数</b></td>
+    <td>1</td>
+    <td>2</td>
+    <td>1（冻结期内的修复多一次）</td>
+  </tr>
+  <tr>
+    <td><b>发布基准</b></td>
+    <td>main 上的 tag，唯一且清晰</td>
+    <td>含糊：dev 还是 main？</td>
+    <td>main 上的 tag；release 分支只做冻结，最终仍回 main 打 tag</td>
+  </tr>
+  <tr>
+    <td><b>漂移 / 回流成本</b></td>
+    <td>低（分支平均活 1~3 天）</td>
+    <td>持续存在，且随项目变大</td>
+    <td>低，只在冻结窗口内存在</td>
+  </tr>
+  <tr>
+    <td><b>门禁执行次数</b></td>
+    <td>每个 PR 一次</td>
+    <td>两次（进 dev、进 main）</td>
+    <td>每个 PR 一次；发布前全量一次</td>
+  </tr>
+  <tr>
+    <td><b>紧急修复难度</b></td>
+    <td>低：fix → main → tag</td>
+    <td>高：要同步 main、dev，可能还有 release</td>
+    <td>低：同 A；冻结期走 release 分支回 main</td>
+  </tr>
+  <tr>
+    <td><b>适合场景</b></td>
+    <td>单人、持续小步迭代</td>
+    <td>小团队、有专职测试、main 直连生产</td>
+    <td>单人 + 需要阶段性冻结（桌面打包验收、大版本）</td>
+  </tr>
+  <tr>
+    <td><b>结论</b></td>
+    <td><span class="tag ok">现在就用</span></td>
+    <td><span class="tag bad">不推荐</span></td>
+    <td><span class="tag ok">需要冻结时切换</span></td>
+  </tr>
+</table>
+
+<div class="card ok-box">
+  <p><b>建议：</b>默认跑方案 A；遇到“需要冻结验证”的版本（尤其是桌面安装包 + 杀软误报验证，见 <code>docs/05-杀毒软件与发布说明.md</code>）临时切到方案 C，冻结结束立刻回到 A。<b>不要采用方案 B</b>——它是给多人团队设计的，单人用只会拿到它的全部成本。</p>
+  <p class="footnote">顺带说明：完整的 Git Flow（main / develop / release / hotfix / feature 五类分支）对你更不适用，它诞生于“有版本发布窗口、多人并行、需要长期维护多个已发布版本”的桌面软件时代。你的发布频率和协作规模都撑不起它的仪式感。</p>
+</div>
+
+<h2><span class="no">06</span>NoteVault 的落地方案</h2>
+
+<h3>6.1 分支类型与寿命（建议写进 AGENTS.md 的补充）</h3>
+
+<svg class="graph" viewBox="0 0 880 300" role="img" aria-label="推荐流程分支拓扑示意">
+  <!-- 唯一的常驻车道 -->
+  <line class="axis" x1="105" y1="50" x2="860" y2="50"/>
+  <!-- 三条短命 feature：各自成 U 形，合并即删 -->
+  <path class="fg" d="M150 50 C150 85 150 105 150 140 L230 140 C230 105 230 85 230 50"/>
+  <path class="fg" d="M300 50 C300 85 300 105 300 140 L380 140 C380 105 380 85 380 50"/>
+  <path class="fg" d="M470 50 C470 85 470 105 470 140 L550 140 C550 105 550 85 550 50"/>
+  <!-- 冻结期才存在的 release 分支 -->
+  <path class="fr" d="M600 50 C600 130 600 180 600 235 L790 235 C790 180 790 130 790 50"/>
+  <!-- main 提交 -->
+  <circle class="dot fill" cx="105" cy="50" r="4.5"/>
+  <circle class="dot" cx="150" cy="50" r="4.5"/>
+  <circle class="dot" cx="230" cy="50" r="4.5"/>
+  <circle class="dot" cx="300" cy="50" r="4.5"/>
+  <circle class="dot" cx="380" cy="50" r="4.5"/>
+  <circle class="dot" cx="470" cy="50" r="4.5"/>
+  <circle class="dot" cx="550" cy="50" r="4.5"/>
+  <circle class="dot" cx="600" cy="50" r="4.5"/>
+  <circle class="dot" cx="790" cy="50" r="4.5"/>
+  <circle class="dot fill" cx="850" cy="50" r="4.5"/>
+  <!-- feature 提交 -->
+  <circle class="dot" cx="150" cy="140" r="4.5"/>
+  <circle class="dot fill" cx="190" cy="140" r="4.5"/>
+  <circle class="dot" cx="230" cy="140" r="4.5"/>
+  <circle class="dot" cx="300" cy="140" r="4.5"/>
+  <circle class="dot" cx="380" cy="140" r="4.5"/>
+  <circle class="dot" cx="470" cy="140" r="4.5"/>
+  <circle class="dot fill" cx="510" cy="140" r="4.5"/>
+  <circle class="dot" cx="550" cy="140" r="4.5"/>
+  <!-- release 提交 -->
+  <circle class="dot warn" cx="600" cy="235" r="4.5"/>
+  <circle class="dot warn" cx="650" cy="235" r="4.5"/>
+  <circle class="dot warn" cx="720" cy="235" r="4.5"/>
+  <circle class="dot warnfill" cx="790" cy="235" r="4.5"/>
+  <!-- 车道名 -->
+  <text class="lbl" x="10" y="54">main</text>
+  <text class="lbl" x="10" y="144">feature</text>
+  <text class="lbl" x="10" y="239">release</text>
+  <!-- 注释 -->
+  <text class="note" x="160" y="180">≤ 3 天，合并即删</text>
+  <text class="note" x="612" y="120">需要冻结才切</text>
+  <text class="note" x="608" y="258">release/v1.5.0（≤ 2 周，只收修复）</text>
+  <!-- tag 标注 -->
+  <line class="axis" x1="550" y1="42" x2="550" y2="50"/>
+  <rect class="tagbg" x="512" y="24" width="62" height="18" rx="5"/>
+  <text class="tagtx" x="520" y="37">v1.4.0</text>
+  <line class="axis" x1="790" y1="42" x2="790" y2="50"/>
+  <rect class="tagbg" x="752" y="24" width="62" height="18" rx="5"/>
+  <text class="tagtx" x="760" y="37">v1.5.0</text>
+</svg>
+<p class="legend"><span class="k">读法</span>：日常只有 main 一条长命线；feature 从 main 拉出、合回 main 后删除。只有当版本需要冻结验证时，才从 main 切一条 <code>release/x.y.z</code>，期间只收修复，验证完成后合回 main、在 <b>main 上</b>打 tag、删除该分支。</p>
+
+<table>
+  <tr>
+    <th class="nowrap">分支</th>
+    <th class="nowrap">从哪来</th>
+    <th class="nowrap">合到哪</th>
+    <th class="nowrap">寿命上限</th>
+    <th>用途 / 规则</th>
+  </tr>
+  <tr>
+    <td><code>main</code></td>
+    <td>—</td>
+    <td>—</td>
+    <td>永久</td>
+    <td>始终可发布；只接受 PR；禁强推；每个 tag 都从这里出</td>
+  </tr>
+  <tr>
+    <td><code>feature/&lt;主题&gt;</code></td>
+    <td>main</td>
+    <td>main</td>
+    <td><b>3 天</b></td>
+    <td>新功能 / 多文件改动；超期就拆分或先合一部分</td>
+  </tr>
+  <tr>
+    <td><code>fix/&lt;主题&gt;</code></td>
+    <td>main</td>
+    <td>main</td>
+    <td><b>1 天</b></td>
+    <td>普通 bug；紧急时也走这条路，只是不等发布窗口</td>
+  </tr>
+  <tr>
+    <td><code>docs/&lt;主题&gt;</code></td>
+    <td>main</td>
+    <td>main</td>
+    <td>3 天</td>
+    <td>文档 / AGENTS.md / 分析稿；同样走 PR，不直推</td>
+  </tr>
+  <tr>
+    <td><code>chore/release-vX.Y.Z</code></td>
+    <td>main</td>
+    <td>main</td>
+    <td>1 天</td>
+    <td>版本号 + 发布说明 + 必要的构建配置；合并后立即打 tag</td>
+  </tr>
+  <tr>
+    <td><code>release/X.Y</code></td>
+    <td>main</td>
+    <td>main</td>
+    <td><b>2 周</b></td>
+    <td>仅冻结期使用：只收修复，不收新功能；验证完合回 main 并删除</td>
+  </tr>
+</table>
+
+<h3>6.2 主干规则（八条）</h3>
+<div class="card">
+  <div class="rule"><div class="id">R1</div><div class="body"><b>main 永远可发布</b><span>任何时刻从 main 打包都应该是能用的版本。做不到时，说明有东西该放 feature 分支而不是 main。</span></div></div>
+  <div class="rule"><div class="id">R2</div><div class="body"><b>一切都从 main 拉，合回 main</b><span>没有例外，没有“先合 dev”。这条最简单，也最能防止流程腐化。</span></div></div>
+  <div class="rule"><div class="id">R3</div><div class="body"><b>分支短命：目标 1 天，上限 3 天</b><span>超过 3 天说明任务太大，拆成可独立合并的小步。短命是“不需要回流机制”的唯一原因。</span></div></div>
+  <div class="rule"><div class="id">R4</div><div class="body"><b>合并前必须过门禁</b><span><code>tsc --noEmit</code> + <code>vitest run</code>；涉及 Rust/宿主加 <code>cargo run -- --smoke</code>；涉及 UI 加双主题截图目检。门禁不过不允许合并。</span></div></div>
+  <div class="rule"><div class="id">R5</div><div class="body"><b>一律 PR + <code>--merge</code></b><span>即使是自己合并也走 PR：留下 diff、留下讨论、留下“为什么改”的记录，也给 AI 代理划定不可直推的边界。</span></div></div>
+  <div class="rule"><div class="id">R6</div><div class="body"><b>tag 只打在 main 上，且永不移除</b><span>发布 = main 的某个 commit + 语义化 tag <code>vX.Y.Z</code> + Release 说明。tag 是唯一“这版是什么”的答案。</span></div></div>
+  <div class="rule"><div class="id">R7</div><div class="body"><b>合并即删分支</b><span>本地和远端都删。分支列表应该只有 main（以及冻结期的 release），一眼看得懂。</span></div></div>
+  <div class="rule"><div class="id">R8</div><div class="body"><b>长命分支必须有退出条件</b><span>如果确实要开 release/next，写下“什么时候合回、什么时候删除”。没有退出条件的分支，就是下一个 dev。</span></div></div>
+</div>
+
+<h3>6.3 日常循环</h3>
+<pre><code>选任务 → 从 main 切分支 → 小步提交 → 每日 rebase main → 本地过门禁
+   → 推送 → PR（自审 diff）→ 合并 --merge → 删分支 → 回 main 对齐</code></pre>
+<p>对应到一周的节奏（可按需调整，不是硬性规定）：</p>
+
+<pre><code><span class="c">周一~周四</span>  feature/fix 随时合入 main（不攒、不排队）
+<span class="c">周五</span>        chore/release-vX.Y.Z：改版本号 + 写发布说明 → 合 main → 打 tag → Release
+<span class="c">任意时刻</span>  紧急修复：fix/* 直接 PR → main → 立即打 patch tag（不等窗口）
+<span class="c">需要冻结时</span> 从 main 切 release/X.Y → 只收修复 → 验证 → 合回 main → tag → 删分支</code></pre>
+
+<div class="card">
+  <p><b>关于“每周固定发布窗口”的借鉴：</b>公司用一条每周的 release 分支来承载它，你不需要那条分支——<b>main 就是那条分支</b>。窗口只是一条时间规则：“周五之前合进 main 的，这周发；周五之后合的，下周发。” 发布动作本身仍然是 <code>chore/release-vX</code> PR + tag，和你现在的做法完全一致。</p>
+  <p class="footnote">你现在其实已经在用公司的“周发布分支”了，只是它叫 <code>chore/release-v0.9.0</code>，而且活得很短——这正是它比公司版本更健康的地方。</p>
+</div>
+
+<h3>6.4 两种发布模式</h3>
+<div class="cols">
+  <div class="card">
+    <h4>模式一：常规发布（默认）</h4>
+    <ol>
+      <li><code>chore/release-vX.Y.Z</code> 从 main 拉出</li>
+      <li>改版本号（<code>package.json</code>、<code>src-tauri/Cargo.toml</code>、<code>tauri.conf.json</code>）</li>
+      <li>写 <code>docs/release-notes-vX.Y.Z.md</code></li>
+      <li>PR → 合并 main</li>
+      <li>在 main 上打 tag，推送 tag</li>
+      <li>构建产物 + checksums，<code>gh release create</code></li>
+      <li>删分支</li>
+    </ol>
+    <p class="footnote">全程没有 release 分支。多数版本走这条。</p>
+  </div>
+  <div class="card">
+    <h4>模式二：冻结发布（按需）</h4>
+    <ol>
+      <li>从 main 切 <code>release/X.Y</code></li>
+      <li>main 只收紧急修复，新功能暂停合入（或照常合入但明确不进本版）</li>
+      <li>release 上只收修复，逐条验证（安装包、杀软、WebView2）</li>
+      <li>全部通过后，release 合回 main</li>
+      <li>在 <b>main</b> 上打 tag，构建发布</li>
+      <li>删除 release 分支</li>
+    </ol>
+    <p class="footnote">适用于桌面安装包验收、杀软误报排查、大版本（v1.0）上线。</p>
+  </div>
+</div>
+
+<div class="card warn-box">
+  <p><b>冻结期的纪律：</b>release 分支存在的每一天，都在制造漂移。所以给它设硬上限（2 周），并且<b>只允许修复进入</b>。一旦开始往里面塞新功能，它就会变成公司流程里那条需要“回流下发”的长命分支。</p>
+</div>
+
+<h3>6.5 紧急修复路径</h3>
+<pre><code>git switch -c fix/xxx main        <span class="c"># 永远从 main 拉</span>
+<span class="c"># 改代码 + 跑门禁</span>
+gh pr create --base main --head fix/xxx
+gh pr merge &lt;PR号&gt; --merge
+git switch main &amp;&amp; git pull --ff-only
+git tag -a vX.Y.(Z+1) -m "hotfix: ..." &amp;&amp; git push origin vX.Y.(Z+1)
+<span class="c"># 若是冻结期：同样的修复也要合入 release/X.Y（或反过来从 release 修完再回 main）</span></code></pre>
+<p>注意：你<b>不需要</b>一条独立的 <code>hotfix</code> 分支类型。紧急与否只影响“是否等发布窗口”，不影响分支路径。</p>
+
+<h3>6.6 与 AGENTS.md 的关系</h3>
+<p><code>AGENTS.md</code> 里“禁止直推 main、必须特性分支 + PR”的规定，本质上是<b>给 AI 代理设的护栏</b>，而不是多人协作需求。它恰好也是单人开发最该保留的一条：代理跑偏时，PR 是你最后一道人工检查点。<b>不要因为“反正只有我一个人”而放开直推 main。</b>这也是不建议加 dev 的另一个理由——如果代理可以直推 dev，护栏就形同虚设；如果代理也只能走 PR，dev 又没有存在意义。</p>
+
+<h2><span class="no">07</span>操作手册（可直接复制）</h2>
+
+<h3>7.1 开分支与同步</h3>
+<pre><code><span class="c"># 从最新 main 开分支</span>
+git switch main &amp;&amp; git pull --ff-only
+git switch -c feature/短主题
+
+<span class="c"># 每天开工前：把自己的分支垫到最新 main 上（替代“回流下发”）</span>
+git fetch origin
+git rebase origin/main
+
+<span class="c"># rebase 后推送（仅自己的分支可强推）</span>
+git push --force-with-lease</code></pre>
+
+<h3>7.2 合并前自检</h3>
+<pre><code>npx tsc --noEmit
+npx vitest run
+<span class="c"># 涉及 Rust / 宿主：</span>
+cd src-tauri &amp;&amp; cargo run -- --smoke
+<span class="c"># 涉及 UI：Web 与桌面端目检 + 深浅主题截图</span></code></pre>
+
+<h3>7.3 PR 与合并</h3>
+<pre><code>git push -u origin feature/短主题
+gh pr create --base main --head feature/短主题
+gh pr merge &lt;PR号&gt; --merge
+
+<span class="c"># 合并后对齐并清理</span>
+git switch main &amp;&amp; git pull --ff-only
+git branch -d feature/短主题
+git push origin --delete feature/短主题</code></pre>
+
+<h3>7.4 发布</h3>
+<pre><code>git switch -c chore/release-v0.10.0 main
+<span class="c"># 改版本号 + 写 docs/release-notes-v0.10.0.md</span>
+gh pr create --base main --head chore/release-v0.10.0
+gh pr merge &lt;PR号&gt; --merge
+
+git switch main &amp;&amp; git pull --ff-only
+git tag -a v0.10.0 -m "v0.10.0"
+git push origin v0.10.0
+
+<span class="c"># 构建 + 校验 + 发布（发布动作需用户确认）</span>
+npx tauri build
+node scripts/pack-portable.mjs
+gh release create v0.10.0 --notes-file docs/release-notes-v0.10.0.md &lt;产物&gt;</code></pre>
+
+<h3>7.5 冻结期（需要时才用）</h3>
+<pre><code>git switch -c release/0.10 main
+<span class="c"># 只收修复，逐条验证安装包 / 杀软 / WebView2</span>
+gh pr create --base main --head release/0.10   <span class="c"># 验证完成后合回 main</span>
+gh pr merge &lt;PR号&gt; --merge
+git switch main &amp;&amp; git pull --ff-only
+git tag -a v0.10.0 -m "v0.10.0" &amp;&amp; git push origin v0.10.0
+git branch -d release/0.10 &amp;&amp; git push origin --delete release/0.10</code></pre>
+
+<h3>7.6 一次性清理与加固</h3>
+<pre><code><span class="c"># 看哪些本地分支已合入 main（可安全删除）</span>
+git branch --merged main
+
+<span class="c"># 批量删除已合并的本地分支（排除 main）</span>
+git branch --merged main | grep -v '^\*' | grep -v ' main$' | xargs -r git branch -d
+
+<span class="c"># 清理远端已不存在的追踪分支</span>
+git fetch --prune</code></pre>
+<p>GitHub 侧建议开启 main 分支保护（Settings → Branches → Add branch protection rule）：</p>
+<ul>
+  <li>Require a pull request before merging（<b>批准人数可设为 0</b>，单人也能自己合，但强制走 PR）；</li>
+  <li>Do not allow force pushes；</li>
+  <li>Do not allow deletions；</li>
+  <li>（可选）Require status checks to pass，等 CI 就绪后勾选。</li>
+</ul>
+
+<h2><span class="no">08</span>用门禁 + CI 替代 test 分支</h2>
+
+<p>公司需要 test 分支，是因为测试环境要部署、要有人点、要和开发环境隔离。你没有这些约束，但有另一个更真实的风险：<b>忘记跑门禁</b>。人（和代理）都会忘，唯一不会忘的是 CI。</p>
+
+<div class="cols">
+  <div class="card">
+    <h4>你现有的门禁</h4>
+    <ul class="check">
+      <li><code>npx tsc --noEmit</code> 零错误</li>
+      <li><code>npx vitest run</code> 全绿</li>
+      <li><code>cargo run -- --smoke</code> 34 项（涉及宿主时）</li>
+      <li><code>cargo test --lib</code>（涉及 Rust 时）</li>
+      <li>Web + 桌面双端实测，深浅主题截图目检</li>
+      <li>安装包本机安装冒烟（发布前）</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>建议补充：最小 CI</h4>
+    <p>不需要自动发布，只做“PR 上必须绿”。仓库目前没有 <code>.github/workflows</code>，这是当前流程最大的缺口。</p>
+    <pre><code>name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npx vitest run</code></pre>
+    <p class="footnote">Tauri 冒烟依赖 Windows + WebView2，放在本地或 self-hosted runner；Linux runner 上意义不大。</p>
+  </div>
+</div>
+
+<div class="card">
+  <p><b>Web 版的“测试环境”怎么办？</b>本机 <code>重新构建并启动NoteVault-Web版.bat</code> 就是你的测试环境。需要给别人看时，用一次性的预览部署（或临时隧道），而不是维护一条 test 分支——那条分支一旦存在，你就会开始需要“把 test 合回 main”的仪式。</p>
+</div>
+
+<h2><span class="no">09</span>常见坑与对策</h2>
+
+<table>
+  <tr>
+    <th style="width:190px">坑</th>
+    <th>症状</th>
+    <th style="width:260px">对策</th>
+  </tr>
+  <tr>
+    <td><b>长命 feature 分支</b></td>
+    <td>合并时几十个冲突，改到怀疑人生</td>
+    <td>3 天上限 + 每日 rebase；超期就拆成可独立合并的小步</td>
+  </tr>
+  <tr>
+    <td><b>分支不删</b></td>
+    <td>19 条本地分支，不知道哪条还有用</td>
+    <td>合并即删；每周 <code>git fetch --prune</code> + <code>--merged</code> 清理</td>
+  </tr>
+  <tr>
+    <td><b>tag 打错位置</b></td>
+    <td>Release 资产和 tag 对应的代码对不上</td>
+    <td>tag 只打在 main 上；打之前 <code>git pull --ff-only</code> 并确认 HEAD</td>
+  </tr>
+  <tr>
+    <td><b>版本号撞车</b></td>
+    <td>两个 release PR 都改成 0.10.0</td>
+    <td>先合的先占号；后合的 rebase 后改成下一个号</td>
+  </tr>
+  <tr>
+    <td><b>merge / squash 混用</b></td>
+    <td>历史难追溯，rebase 时反复冲突</td>
+    <td>统一 <code>--merge</code>（AGENTS.md 已定），不要中途换</td>
+  </tr>
+  <tr>
+    <td><b>发布产物未验证</b></td>
+    <td>用户装完打不开 / 被杀软删掉</td>
+    <td>打包后本机安装冒烟 + 校验 checksums，再发 Release</td>
+  </tr>
+  <tr>
+    <td><b>把 main 当草稿</b></td>
+    <td>某次想发版，发现 main 编译不过</td>
+    <td>门禁 + 分支保护；main 上任何 commit 都必须能构建</td>
+  </tr>
+  <tr>
+    <td><b>流程只在脑子里</b></td>
+    <td>过两个月忘了当初为什么这么定</td>
+    <td>把第 06 节的规则补进 AGENTS.md，让代理也遵守</td>
+  </tr>
+</table>
+
+<h2><span class="no">10</span>落地清单</h2>
+
+<div class="cols">
+  <div class="card">
+    <h4>今天就能做（10 分钟）</h4>
+    <ul class="check">
+      <li>确认不引入 dev 分支（本文结论）</li>
+      <li>删除已合并的本地 / 远端分支</li>
+      <li>给 main 加分支保护（禁强推、要求 PR）</li>
+      <li>把第 06 节的分支寿命表补进 AGENTS.md</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>本周（1~2 小时）</h4>
+    <ul class="check">
+      <li>加最小 CI（tsc + vitest），让 PR 必须绿</li>
+      <li>定发布窗口（建议周五），写进 AGENTS.md</li>
+      <li>把 <code>release/X.Y</code> 的启用条件写成一句话规则</li>
+      <li>下一版走一次完整流程：feature → PR → 合并 → tag → Release</li>
+    </ul>
+  </div>
+</div>
+
+<h2><span class="no">11</span>需要你拍板的事</h2>
+<table>
+  <tr><th style="width:200px">决策项</th><th>建议</th><th style="width:150px">影响面</th></tr>
+  <tr>
+    <td>是否引入 dev 分支</td>
+    <td><b>不引入</b>；保留触发条件，规模变化时再议</td>
+    <td>流程 / AGENTS.md</td>
+  </tr>
+  <tr>
+    <td>main 分支保护</td>
+    <td><b>开启</b>（批准人数 0，允许自己合并，但必须走 PR、禁强推）</td>
+    <td>GitHub 设置，不影响本地</td>
+  </tr>
+  <tr>
+    <td>是否加 CI</td>
+    <td><b>建议加</b>最小 workflow，只做检查不做发布</td>
+    <td>新增 <code>.github/workflows/ci.yml</code></td>
+  </tr>
+  <tr>
+    <td>发布节奏</td>
+    <td>固定窗口（周五）或“攒够就发”，二选一；<b>建议固定窗口</b>，更容易形成习惯</td>
+    <td>版本号 / 发布说明</td>
+  </tr>
+  <tr>
+    <td>release 分支何时启用</td>
+    <td>仅两种情况：桌面安装包需冻结验证、大版本上线；<b>硬上限 2 周</b></td>
+    <td>发布流程</td>
+  </tr>
+</table>
+
+<hr>
+
+<h2><span class="no">A</span>附录</h2>
+
+<h3>A.1 术语对照</h3>
+<table>
+  <tr><th style="width:170px">术语</th><th>含义</th><th style="width:220px">在 NoteVault 里的对应</th></tr>
+  <tr><td><b>主干开发</b><br>Trunk-based</td><td>只有一条长期主线，改动以短命分支合入，强调小步、频繁集成</td><td>main + 1~3 天的 feature 分支</td></tr>
+  <tr><td><b>GitHub Flow</b></td><td>分支 → PR → 合并 → 部署的轻量流程，无 dev / release 常驻分支</td><td>你现在的做法</td></tr>
+  <tr><td><b>Git Flow</b></td><td>main / develop / release / hotfix / feature 五类分支，适合有版本窗口的多人大项目</td><td>不采用</td></tr>
+  <tr><td><b>发布分支</b><br>release branch</td><td>为冻结而切的分支，只收修复，上线后删除</td><td>按需的 <code>release/X.Y</code></td></tr>
+  <tr><td><b>回流 / 下发</b><br>back-merge</td><td>把 main 的改动同步回各条长命分支</td><td>不存在；用 rebase 替代</td></tr>
+  <tr><td><b>tag vs branch</b></td><td>tag 是不可变快照，branch 是可变指针</td><td>tag 记录“发布了什么”，branch 记录“正在改什么”</td></tr>
+</table>
+
+<h3>A.2 公司流程 → 个人流程 速查</h3>
+<table>
+  <tr><th style="width:220px">公司</th><th>个人</th></tr>
+  <tr><td>main（生产）</td><td>main（永远可发布）+ tag</td></tr>
+  <tr><td>test（测试环境）</td><td>本地门禁 + 打包产物验收（可选 CI）</td></tr>
+  <tr><td>项目 release 分支</td><td>按需的 <code>release/X.Y</code>，≤ 2 周</td></tr>
+  <tr><td>每周 release 分支</td><td>周五发布窗口（不建分支，main 承载）</td></tr>
+  <tr><td>feature 分支</td><td>feature 分支，≤ 3 天，合并即删</td></tr>
+  <tr><td>hotfix 从 main 拉</td><td>fix 分支从 main 拉，路径相同，只是不等窗口</td></tr>
+  <tr><td>回流下发</td><td>每日 <code>git rebase origin/main</code>（因为分支短命，成本接近 0）</td></tr>
+  <tr><td>dev 分支</td><td><b>不需要</b>；用 tag + main 表达同一语义</td></tr>
+</table>
+
+<h3>A.3 参考</h3>
+<ul class="footnote">
+  <li>Trunk Based Development — <a href="https://trunkbaseddevelopment.com/">trunkbaseddevelopment.com</a></li>
+  <li>GitHub Flow — <a href="https://docs.github.com/en/get-started/using-github/github-flow">docs.github.com</a></li>
+  <li>Git Flow 原文（了解它为何不适合单人） — <a href="https://nvie.com/posts/a-successful-git-branching-model/">nvie.com</a></li>
+  <li>Feature Branch 的成本分析 — <a href="https://martinfowler.com/bliki/FeatureBranch.html">martinfowler.com</a></li>
+</ul>
+
+<p class="footnote" style="margin-top:28px">本文档只讨论流程，不改动代码。若采纳，建议把第 06 节的规则表与第 07 节的操作命令合并进 <code>AGENTS.md</code>，作为下一个 docs PR 的内容。</p>
+
+</main>
+</body>
+</html>
